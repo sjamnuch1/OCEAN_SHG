@@ -23,6 +23,7 @@ module ocean_legacy_files
   integer, allocatable :: file_indx( : )
   character( len=12 ), allocatable :: file_names( : )
 
+  integer :: bands(2)
   integer :: brange(4)
   integer :: kpts(3)
   integer :: nspin 
@@ -75,7 +76,8 @@ module ocean_legacy_files
     integer :: nbands
     integer :: bands_remain, i
 
-    bands_remain = brange(4)-brange(3)+brange(2)-brange(1)+2
+!    bands_remain = brange(4)-brange(3)+brange(2)-brange(1)+2
+    bands_remain = bands(2) - bands(1) + 1
 
     do i = 0, poolID
       nbands = bands_remain / ( pool_nproc - i )
@@ -152,7 +154,7 @@ module ocean_legacy_files
       return
     endif 
 
-    if( size( energies, 1 ) .lt. ( brange(4)-brange(1)+1 ) ) then
+    if( size( energies, 1 ) .lt. ( bands(2) - bands(1)+1 ) ) then
       write(6,*) 'Error! Band dimension of energies too small in olf_read_energies_single'
       ierr = 1
       return
@@ -244,7 +246,8 @@ module ocean_legacy_files
   end subroutine olf_clean
 
   ! Read the universal little files
-  subroutine olf_read_init( comm, ierr )
+  ! 
+  subroutine olf_read_init( comm, ierr, bands_ )
     use ocean_mpi, only : MPI_INTEGER, MPI_CHARACTER
 #ifdef MPI_F08
     type( MPI_COMM ), intent( in ) :: comm
@@ -252,6 +255,7 @@ module ocean_legacy_files
     integer, intent( in ) :: comm
 #endif
     integer, intent( inout ) :: ierr
+    integer, intent( in ), optional :: bands_( 2 )
     !
     integer :: i
     !
@@ -284,6 +288,17 @@ module ocean_legacy_files
       open(unit=99,file='nspin', form='formatted', status='old' )
       read(99,*) nspin
       close(99)
+
+      if( present( bands_ ) ) then
+        bands(:) = bands_
+        if( bands( 1 ) .lt. brange( 1 ) .or. bands( 2 ) .gt. brange( 4 ) ) then
+          ierr = 1
+          return
+        endif
+      else
+        bands( 1 ) = brange( 1 )
+        bands( 2 ) = brange( 4 )
+      endif
     endif
 
 #ifdef MPI
@@ -307,6 +322,9 @@ module ocean_legacy_files
     if( ierr .ne. 0 ) return
 
     call MPI_BCAST( nspin, 1, MPI_INTEGER, inter_root, inter_comm, ierr )
+    if( ierr .ne. 0 ) return
+
+    call MPI_BCAST( bands, 2, MPI_INTEGER, inter_root, inter_comm, ierr )
     if( ierr .ne. 0 ) return
 #endif
 
@@ -455,7 +473,7 @@ module ocean_legacy_files
     !
     real( DP ), allocatable, dimension( :, : ) :: re_wvfn, im_wvfn
     integer, allocatable, dimension( :, : ) :: trans_gvecs
-    integer :: test_gvec, itarg, nbands_to_send, nr, ierr_, nbands, id, start_band
+    integer :: test_gvec, itarg, nbands_to_send, nr, ierr_, nbands_to_read, id, start_band, stop_band, band_overlap, i
 #ifdef MPI_F08
     type( MPI_REQUEST ), allocatable :: requests( : )
 #else
@@ -469,7 +487,7 @@ module ocean_legacy_files
       return
     endif
 
-    nbands = brange(4)-brange(3)+brange(2)-brange(1)+2
+    nbands_to_read = brange(4)-brange(3)+brange(2)-brange(1)+2
 
     if( pool_myid .eq. pool_root ) then
       itarg = wvfn_file_indx( ikpt )
@@ -505,16 +523,28 @@ module ocean_legacy_files
 #ifdef MPI
       call MPI_IBCAST( gvecs, 3*ngvecs, MPI_INTEGER, pool_root, pool_comm, requests( nr ), ierr )
 #endif
-      allocate( re_wvfn( ngvecs, nbands ), im_wvfn( ngvecs, nbands ) )
+      allocate( re_wvfn( ngvecs, nbands_to_read ), im_wvfn( ngvecs, nbands_to_read ) )
 
       write(1000+myid,*) '***Reading k-point: ', ikpt, ispin
       write(1000+myid,*) '   Ngvecs: ', ngvecs
-      write(1000+myid,*) '   Nbands: ', nbands
+      write(1000+myid,*) '   Nbands: ', nbands_to_read
 
 
       read( 99 ) re_wvfn
-      start_band = 1
 
+      ! slow way, but easy to program
+      stop_band = 1
+      if( brange( 2 ) .ge. brange( 3 ) ) then
+        start_band = brange(2) - brange(1) + 1
+        band_overlap = brange(2) - brange(3) + 1
+        stop_band = brange(1) + band_overlap
+        do i = start_band, stop_band, - 1
+          write(1000+myid,*) 'Sending', i-band_overlap, 'to' , i
+          re_wvfn( :, i ) = re_wvfn( :, i - band_overlap )
+        enddo
+      endif
+
+      start_band = stop_band
 #ifdef MPI
       ! loop over each proc in this pool to send wavefunctions
       do id = 0, pool_nproc - 1
@@ -536,7 +566,16 @@ module ocean_legacy_files
 #endif
 
       read( 99 ) im_wvfn
-      start_band = 1
+      stop_band = 1
+      if( brange( 2 ) .ge. brange( 3 ) ) then
+        start_band = brange(2) - brange(1) + 1
+        band_overlap = brange(2) - brange(3) + 1
+        stop_band = brange(1) + band_overlap
+        do i = start_band, stop_band, - 1
+          im_wvfn( :, i ) = im_wvfn( :, i - band_overlap )
+        enddo
+      endif
+      start_band = stop_band
 
 #ifdef MPI
      ! loop over each proc in this pool to send imag wavefunctions
@@ -563,7 +602,7 @@ module ocean_legacy_files
       requests(:) = MPI_REQUEST_NULL
       write(1000+myid,*) '***Receiving k-point: ', ikpt, ispin
       write(1000+myid,*) '   Ngvecs: ', ngvecs
-      write(1000+myid,*) '   Nbands: ', nbands
+      write(1000+myid,*) '   Nbands: ', bands(2)-bands(1)+1
 
 
       allocate( re_wvfn( ngvecs, my_bands ), im_wvfn( ngvecs, my_bands ) )
@@ -591,7 +630,12 @@ module ocean_legacy_files
     call MPI_WAITALL( nr, requests, MPI_STATUSES_IGNORE, ierr )
     if( ierr .ne. 0 ) return
 
-    wfns( :, : ) = cmplx( re_wvfn( :, 1:my_bands ), im_wvfn( :, 1:my_bands ), DP )
+    if( pool_myid .eq. pool_root ) then
+      wfns( :, : ) = cmplx( re_wvfn( :, stop_band:my_bands+stop_band-1 ), &
+                            im_wvfn( :, stop_band:my_bands+stop_band-1 ), DP )
+    else
+      wfns( :, : ) = cmplx( re_wvfn( :, 1:my_bands ), im_wvfn( :, 1:my_bands ), DP )
+    endif
     deallocate( re_wvfn, im_wvfn, requests )
 
     write(1000+myid,*) '***Finishing k-point: ', ikpt, ispin
