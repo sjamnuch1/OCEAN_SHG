@@ -53,14 +53,36 @@ module ocean_qe54_files
             qe54_read_energies_single
   public :: qe54_kpts_and_spins, qe54_return_my_bands, qe54_is_my_kpt
   public :: qe54_nprocPerPool, qe54_getPoolIndex, qe54_getBandsForPoolID, qe54_returnGlobalID
+  public :: qe54_npool, qe54_universal2KptAndSpin, qe54_poolID, qe54_poolComm
 
   contains
+
+  pure function qe54_poolComm()
+#ifdef MPI_F08
+    type( MPI_COMM ) :: qe54_poolComm
+#else
+    integer :: qe54_poolComm
+#endif
+
+    qe54_poolComm = pool_comm
+  end function qe54_poolComm
+
+  pure function qe54_npool() result( npool_ )
+    integer :: npool_
+    npool_ = npool
+  end function qe54_npool
 
   pure function qe54_nprocPerPool() result( nproc )
     integer :: nproc
     
     nproc = pool_nproc
   end function qe54_nprocPerPool
+
+  pure function qe54_poolID() result( pid )
+    integer :: pid
+    
+    pid = pool_myid
+  end function qe54_poolID
 
   pure function qe54_getPoolIndex( ispin, ikpt ) result( poolIndex )
     integer, intent( in ) :: ispin, ikpt
@@ -70,6 +92,26 @@ module ocean_qe54_files
     kptCounter = ikpt + ( ispin - 1 ) * product(kpts(:))
     poolIndex = mod( kptCounter, npool )
   end function qe54_getPoolIndex
+
+  subroutine qe54_universal2KptAndSpin( uni, ispin, ikpt )
+    integer, intent( in ) :: uni
+    integer, intent( out ) :: ispin, ikpt
+    !
+    integer :: i, ierr
+    logical :: is_kpt
+
+    i = 0
+    do ispin = 1, nspin
+      do ikpt = 1, product(kpts(:))
+        call qe54_is_my_kpt( ikpt, ispin, is_kpt, ierr )
+        if( is_kpt ) i = i +1
+        if( uni .eq. i ) return
+      enddo
+    enddo
+
+    ikpt = 0
+    ispin = 0
+  end subroutine qe54_universal2KptAndSpin
 
   pure function qe54_getBandsForPoolID( poolID ) result(nbands)
     integer, intent( in ) :: poolID
