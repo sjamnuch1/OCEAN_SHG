@@ -26,7 +26,6 @@ if (! $ENV{"OCEAN_BIN"} ) {
   $ENV{"OCEAN_BIN"} = abs_path( $1 );
   print "OCEAN_BIN not set. Setting it to $ENV{'OCEAN_BIN'}\n";
 }
-
 my $t0 = [gettimeofday];
 
 my $json = JSON::PP->new;
@@ -172,13 +171,36 @@ if( $newPrepData->{'bse'}->{'val_start'} > 1 ) {
 if( $newPrepData->{'bse'}->{'complete'} ) {
   for( my $i = 0; $i < 4; $i++ ) {
     if( $newPrepData->{'bse'}->{'brange'}[$i] != $prepData->{'bse'}->{'brange'}[$i] ) {
-      $newPrepData->{'bse'}->{'complete'} = JSON::PP::false;
+      $newPrepData->{'bse'}->{'complete'} = JSON::PP::false; 
       printf "Brange doesn't match: %i  %i\n", $newPrepData->{'bse'}->{'brange'}[$i], $prepData->{'bse'}->{'brange'}[$i];
-      last;
+      #last;
     }
   }
 }
 
+printf "Check if we're doing Wannier\n";
+#printf "%s\n",$prepData->{'bse'}->{'wann'};
+#printf "%s\n",$newPrepData->{'bse'}->{'wann'};
+#die;
+#SJ
+#Check if we're doing Wannier. If we're doing Wannier then check if the nwann is correct.
+if( $prepData->{'bse'}->{'wann'} && $prepData->{'bse'}->{'complete'} ) 
+  {
+   printf "Detected Wannier run. Checking the band range\n";
+   my $wannierFile = catfile( updir(), "DFT", "NWANN");
+   open my $fh, '<', $wannierFile or die "Cannot open file: $!";
+   chomp(my $NWANN = <$fh>);
+   close $fh;
+   printf "%i %i %i\n",$prepData->{'bse'}->{'brange'}[1],$prepData->{'bse'}->{'brange'}[0],$NWANN;
+   #printf "%s\n",$newPrepData->{'bse'}->{'brange'}[1]-$newPrepData->{'bse'}->{'brange'}[0]+1 == $NWANN;
+   if ( $prepData->{'bse'}->{'brange'}[1]-$prepData->{'bse'}->{'brange'}[0]+1 == $NWANN)
+     {
+      printf "The ran was done with Wannier size of %i\n",$prepData->{'bse'}->{'brange'}[1]-$prepData->{'bse'}->{'brange'}[0]+1;
+      printf "Expecting %i\n",$NWANN;
+      printf "PREP stage should be completed.";
+      $newPrepData->{'bse'}->{'complete'} = JSON::PP::true;
+     }
+  }
 
 
 
@@ -265,9 +287,71 @@ $newPrepData->{'bse'}->{'cbm'} = $prepData->{'bse'}->{'cbm'} if( $newPrepData->{
 $newPrepData->{'time'} = $prepData->{'time'} if( exists $prepData->{'time'} );
 $newPrepData->{'dft_time'} = $dftData->{'time'};
 
+#SJ check if we have done wannier to use as valence band instead
+##Currently we are in the PREP directory
+#Look for the WANN file in DFT.
+#If it exists, open it and assign the json file with bse->wannier
+my $wannierFile = catfile( updir(), "DFT", "WANN");
+if ( -e $wannierFile)
+{
+	print "Found WANN file in DFT. If the content is true then we will be using Wannier functions for valence bands\n";
+open WANN_file, $wannierFile;
+<WANN_file> =~m/(\w+)/ or die;
+my $WANN_mode= $1;
+close WANN_file;
+if( $WANN_mode =~ m/true/i )
+{
+$newPrepData->{'bse'}->{'wann'} = JSON::PP::true ;
+}
+elsif( $WANN_mode =~ m/false/i )
+{
+$newPrepData->{'bse'}->{'wann'} = JSON::PP::false ;
+}
+else
+{
+	        print "WARNING!!! Wannier file in DFT phase is incorrectly specified. Setting the flag to false\n";
+		print "Not using Wannier functions for valence bands and proceed with standard OCEAN way\n";
+$newPrepData->{'bse'}->{'wann'} = JSON::PP::false ;		  
+}
+}
+else
+{
+        print "Proceed with standard OCEAN without wannier\n";
+	$newPrepData->{'bse'}->{'wann'} = JSON::PP::false ;
+}
+
+#SJ
+#Update brange for number of valence to the size of wannier function
+#Should have option to get nwann from input
+if ($newPrepData->{'bse'}->{'wann'})
+{
+my $wannierFile = catfile( updir(), "DFT", "NWANN");
+open my $fh, '<', $wannierFile or die "Cannot open file: $!";
+#<WANN_file> =~m/(\w+)/ or die;
+chomp(my $NWANN = <$fh>);
+close $fh;
+#my $NWANN= $1;
+#close WANN_file;
+print "$NWANN $newPrepData->{'bse'}->{'brange'}[1] $newPrepData->{'bse'}->{'brange'}[0]\n";
+if ($newPrepData->{'bse'}->{'brange'}[1]-$newPrepData->{'bse'}->{'brange'}[0]+1 - $NWANN > 0)
+{
+	printf "The wannier function built is smaller than the full valence bands\n";
+	printf "Adjusting brange to go from %i to %i \n",$newPrepData->{'bse'}->{'brange'}[0],$NWANN;
+	#$newPrepData->{'bse'}->{'brange'}[0] = $newPrepData->{'bse'}->{'brange'}[1] - $NWANN + 1;
+        $newPrepData->{'bse'}->{'brange'}[1] = $NWANN;
+	printf "brange[0:1] %i %i\n",$newPrepData->{'bse'}->{'brange'}[0],$newPrepData->{'bse'}->{'brange'}[1];
+} #Comapre nval to nwann
+} #Check bse->wann loop
+
+#print "STOP\n";
+#die;
+#SJ
+
+
 open OUT, ">", "prep.json" or die;
 print OUT $json->encode($newPrepData);
 close OUT;
+
 
 unless( $newPrepData->{'bse'}->{'complete'} )
 {
@@ -374,14 +458,15 @@ sub copyLinkQE
 
   # Three cases here. Either no finite-q, finite-q single directory, or finite-q two directories
   # Do the two-directory versions first
-  if( $hashRef->{'split'} ) {
+  # SJ this is the default way.
+  if( $hashRef->{'split'} ) { 
     my $rundir = sprintf "k%i_%i_%iq%.6f_%.6f_%.6f", $hashRef->{'kmesh'}[0],  
                    $hashRef->{'kmesh'}[1], $hashRef->{'kmesh'}[2], $hashRef->{'kshift'}[0],
                    $hashRef->{'kshift'}[1], $hashRef->{'kshift'}[2];
     my $dirname = catdir( updir(), updir(), "DFT", $rundir, "Out" );
     symlink ($dirname, "Out_shift") == 1 or die "Failed to link Out\n$!";
     if( -e catfile( "Out_shift", "system.save", "data-file-schema.xml" ) ) {
-      copy( catfile( updir(), updir(), "DFT", $rundir, "QE_EIGS.txt"), "QE_EIGS_shift.txt" );
+      copy( catfile( updir(), updir(), "DFT", $rundir, "QE_EIGS.txt"), "QE_EIGS_shift.txt" ); #Here is conduction bands.
     }
 
     my @kshift;
@@ -392,15 +477,25 @@ sub copyLinkQE
       while( $kactual >= 1 ) { $kactual -= 1; }
       $kactual *= $hashRef->{'kmesh'}[$i];
       $kshift[$i] = $kactual;
-    } 
+    }
+    if ( $hashRef->{'wann'} ) {
+    my $rundir = sprintf "k%i_%i_%iq%.6f_%.6f_%.6f_WANN", $hashRef->{'kmesh'}[0],
+                   $hashRef->{'kmesh'}[1], $hashRef->{'kmesh'}[2], $kshift[0],
+	           $kshift[1], $kshift[2];	
+    my $dirname = catdir(updir(),updir(),"DFT",$rundir, "Out");
+    symlink ($dirname,"Out") == 1 or die "Failed to link wannier Out\n$!";
+    if( -e catfile( "Out","system.save","wann")) {
+      copy(catfile(updir(),updir(),"DFT",$rundir,"QE_EIGS_WANN.txt"),"QE_EIGS.txt");
+    } }
+    else { 
     my $rundir = sprintf "k%i_%i_%iq%.6f_%.6f_%.6f", $hashRef->{'kmesh'}[0],  
                    $hashRef->{'kmesh'}[1], $hashRef->{'kmesh'}[2], $kshift[0],
                    $kshift[1], $kshift[2];
     my $dirname = catdir( updir(), updir(), "DFT", $rundir, "Out" );
     symlink ($dirname, "Out") == 1 or die "Failed to link Out\n$!";
     if( -e catfile( "Out", "system.save", "data-file-schema.xml" ) ) {
-      copy( catfile( updir(), updir(), "DFT", $rundir, "QE_EIGS.txt"), "QE_EIGS.txt" );
-    }
+      copy( catfile( updir(), updir(), "DFT", $rundir, "QE_EIGS.txt"), "QE_EIGS.txt" ); #Here is valence bands.
+    } }
   } else {
     my $rundir;
     if( $hashRef->{'nonzero_q'} ) {
@@ -428,6 +523,13 @@ sub copyLinkQE
 
 #    copy( catfile( updir(), updir(), "DFT", $rundir, "QE_EIGS.txt"), "QE_EIGS.txt" );
 #    copy("../$rundir/enkfile", "enkfile_raw") or die "Failed to grab enkfile\n$!";
+  }
+  if( -e catfile( "Out","system.save","wann"))
+  {
+    print "Detected Wannier function as valence band built in QE62-style DFT run\n";
+    open TMP, ">", "wvfn.ipt" or die "Failed to open wvfn.ipt for writing\n$!";
+    print TMP "qe62\n";
+    close TMP;
   }
   elsif( -e catfile( "Out", "system.save", "data-file.xml" ) )
   {

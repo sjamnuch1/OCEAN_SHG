@@ -341,7 +341,11 @@ if( -e $dataFile )
 #    print "MODEL: " . $newScreenData->{'model'}->{'complete'} . "\n";
     if( $newScreenData->{'model'}->{'flavor'} eq 'SLL') {
       runVhommod($newScreenData->{'model'}->{'SLL'}) 
-    } else {
+    }
+    elsif ($newScreenData->{'model'}->{'flavor'} eq 'Isolated') { #SJ
+      runVIsolated($newScreenData->{'model'}->{'Isolated'})       #SJ
+    }
+    else {
       die "Unrecognized model flavor!\n";
     }
 
@@ -2106,6 +2110,48 @@ sub runScreenDriver
     }
   }
 
+}
+
+sub runVIsolated
+{
+   my $ref = $_[0];
+   open OUT, ">", 'screen.model.dq' or die;
+   printf OUT "%g\n", $ref->{'dq'};
+   close OUT;
+
+   open OUT, ">", 'screen.model.qmax' or die;
+   printf OUT "%g\n", $ref->{'qmax'};
+   close OUT;
+
+   if( exists $ref->{'nav'} && $ref->{'nav'} >= 0 ) {
+     open OUT, ">", 'fake_nav.ipt' or die;
+     printf OUT "%g\n", $ref->{'nav'};
+     close OUT;
+   } elsif( -e 'fake_nav.ipt' ) {
+     unlink 'fake_nav.ipt';
+   }
+   print "Running rpot for isolated molecule\n";
+
+  print "$ENV{'OCEAN_BIN'}/visolatedmod.x\n";
+  system("$ENV{'OCEAN_BIN'}/visolatedmod.x" );
+  if ($? == -1) {
+      print "failed to execute: $!\n";
+      die;
+  }
+  elsif ($? & 127) {
+      printf "visolatedmod died with signal %d, %s coredump\n",
+      ($? & 127),  ($? & 128) ? 'with' : 'without';
+      die;
+  }
+  else {
+    my $errorCode = $? >> 8;
+    if( $errorCode != 0 ) {
+      die "CALCULATION FAILED\n visolatedmod exited with value $errorCode\n";
+    }
+    else {
+      printf "visolatedmod exited successfully with value %d\n", $errorCode;
+    }
+  }
 }
 
 sub runVhommod

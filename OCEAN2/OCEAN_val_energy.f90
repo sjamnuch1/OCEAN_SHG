@@ -748,12 +748,13 @@ module OCEAN_val_energy
       do ibw = 1, sys%nbw
         do ibeta = 1, sys%nbeta
           do kiter = 1, sys%nkpts
-            do biter2 = 1, ( nelectron / 2 ) - sys%brange( 1 ) + 1
+            do biter2 = 1, sys%cur_run%val_bands - sys%brange( 1 ) + 1
   !            if( kiter .eq. 1 .and. myid .eq. 0 ) write(6,*) 'clipl: ', clipl, val_energies( biter2, kiter, 1 )
   !            if( (.not. have_clipl) .or.  val_energies( biter2, kiter, 1 ) .gt. clipl ) then
               if( val_energies( biter2, kiter, 1, ibw ) .ge. clipl ) then
                 do biter1 = 2 - sys%brange( 3 ) + ( nelectron / 2 ), sys%cur_run%num_bands
-                  if(  con_energies( biter1, kiter, 1, ibw ) .le. cliph ) then
+                !write(6,*) 'biter1 ',biter1, 'biter2', biter2 !SJ
+                if(  con_energies( biter1, kiter, 1, ibw ) .le. cliph ) then
                     allow%valr( biter1, biter2, kiter, ibeta, ibw ) = 1.0_dp
                     if( ibw .eq. 1 ) then
                       allow%vali( biter1, biter2, kiter, ibeta, ibw ) = 1.0_dp
@@ -963,7 +964,8 @@ module OCEAN_val_energy
 !        if( sys%nspn .eq. 2 ) homo = max( val_energies( i_band, kiter , 2), homo )
       enddo
 !      i_band = nelectron / 2 - sys%brange( 3 ) + 2
-      i_band = nelectron / 2 + 1
+      !i_band = nelectron / 2 + 1 SJ
+      i_band = sys%brange( 2 ) !SJ
       if( myid .eq. root ) write( 6, * ) "i_band = ", i_band
       lumo = con_energies( i_band, 1 , 1, 1)
       do ibw = 1, sys%nbw

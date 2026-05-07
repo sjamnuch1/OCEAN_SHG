@@ -208,6 +208,7 @@ module OCEAN_system
         write(6,*) '  Override of valence Hamiltonian spin requested:', sys%valence_ham_spin
       endif
 
+      !This is conduction bands used.
       open(unit=99,file='nbuse.ipt',form='formatted',status='old')
       rewind(99)
       read(99,*) sys%num_bands

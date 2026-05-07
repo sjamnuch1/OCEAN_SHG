@@ -24,10 +24,12 @@ module ocean_dft_files
   integer, parameter :: QE54_FLAVOR = 1
   integer, parameter :: QE62_FLAVOR = 2
   integer, parameter :: ABINIT_FLAVOR = 3
+  !SJ
+  integer, parameter :: WANNIER_FLAVOR =4
 
-  character(len=6), parameter   :: flavorToText(0:3) = [ 'legacy', 'qe54  ', 'qe62  ', 'abinit' ]
+  character(len=6), parameter   :: flavorToText(0:4) = [ 'legacy', 'qe54  ', 'qe62  ', 'abinit','wanqe ' ]
 
-  public :: LEGACY_FLAVOR, QE54_FLAVOR, QE62_FLAVOR
+  public :: LEGACY_FLAVOR, QE54_FLAVOR, QE62_FLAVOR,WANNIER_FLAVOR
 
   integer, parameter :: ODF_VALENCE = 0
   integer, parameter :: ODF_CONDUCTION = 1
@@ -79,6 +81,9 @@ module ocean_dft_files
         odf_poolComm = qe54_poolComm()
       case( QE62_FLAVOR )
         odf_poolComm = qe62_poolComm()
+      !SJ Wannier function file is formatted the same way as QE62
+      case( WANNIER_FLAVOR)
+        odf_poolComm = qe62_poolComm()
       case( ABINIT_FLAVOR )
         odf_poolComm = abi_poolComm()
       case default
@@ -100,6 +105,9 @@ module ocean_dft_files
       case( QE54_FLAVOR )
         pid = qe54_poolID()
       case( QE62_FLAVOR )
+        pid = qe62_poolID()
+     !SJ Wannier func
+      case(  WANNIER_FLAVOR)
         pid = qe62_poolID()
       case( ABINIT_FLAVOR )
         pid = abi_poolID()
@@ -149,6 +157,9 @@ module ocean_dft_files
         npool_= qe54_npool()
       case( QE62_FLAVOR )
         npool_ = qe62_npool()
+      !SJ Wannier func
+      case ( WANNIER_FLAVOR)
+        npool_ = qe62_npool()
       case( ABINIT_FLAVOR )
         npool_ = abi_npool()
       case default
@@ -179,6 +190,9 @@ module ocean_dft_files
         call qe54_universal2KptAndSpin( uni, ikpt, ispin )
       case( QE62_FLAVOR )
         call qe62_universal2KptAndSpin( uni, ikpt, ispin )
+      !SJ wannier function
+      case( WANNIER_FLAVOR)
+        call qe62_universal2KptAndSpin( uni, ikpt, ispin)
       case( ABINIT_FLAVOR )
         call abi_universal2KptAndSpin( uni, ikpt, ispin )
       case default
@@ -200,6 +214,9 @@ module ocean_dft_files
       case( QE54_FLAVOR )
         poolIndex = qe54_getPoolIndex( ispin, ikpt )
       case( QE62_FLAVOR )
+        poolIndex = qe62_getPoolIndex( ispin, ikpt )
+      !SJ Wann func
+      case( WANNIER_FLAVOR)
         poolIndex = qe62_getPoolIndex( ispin, ikpt )
       case( ABINIT_FLAVOR )
         poolIndex = abi_getPoolIndex( ispin, ikpt )
@@ -249,6 +266,9 @@ module ocean_dft_files
         nbands = qe54_getValenceBandsForPoolID( poolID ) 
       case( QE62_FLAVOR )
         nbands = qe62_getValenceBandsForPoolID( poolID )
+      !SJ wannier function
+      case( WANNIER_FLAVOR )
+        nbands = qe62_getValenceBandsForPoolID( poolID )
       case( ABINIT_FLAVOR )
         nbands = abi_getValenceBandsForPoolID( poolID )
       case default
@@ -273,6 +293,9 @@ module ocean_dft_files
       case( QE54_FLAVOR )
         nbands = qe54_getConductionBandsForPoolID( poolID ) 
       case( QE62_FLAVOR )
+        nbands = qe62_getConductionBandsForPoolID( poolID )
+      !SJ wannier func
+      case(WANNIER_FLAVOR)
         nbands = qe62_getConductionBandsForPoolID( poolID )
       case( ABINIT_FLAVOR )
         nbands = abi_getConductionBandsForPoolID( poolID )
@@ -299,6 +322,9 @@ module ocean_dft_files
         nbands = qe54_getAllBandsForPoolID( poolID ) 
       case( QE62_FLAVOR )
         nbands = qe62_getAllBandsForPoolID( poolID )
+      !SJ wann func
+      case(WANNIER_FLAVOR)
+        nbands = qe62_getAllBandsForPoolID( poolID )
       case( ABINIT_FLAVOR )
         nbands = abi_getAllBandsForPoolID( poolID )
       case default
@@ -321,6 +347,9 @@ module ocean_dft_files
       case( QE54_FLAVOR )
         globalID = qe54_returnGlobalID( poolIndex, poolID )
       case( QE62_FLAVOR )
+        globalID = qe62_returnGlobalID( poolIndex, poolID )
+      !SJ wann func
+      case( WANNIER_FLAVOR)
         globalID = qe62_returnGlobalID( poolIndex, poolID )
       case( ABINIT_FLAVOR )
         globalID = abi_returnGlobalID( poolIndex, poolID )
@@ -346,6 +375,9 @@ module ocean_dft_files
       case( QE54_FLAVOR )
         nproc = qe54_nprocPerPool()
       case( QE62_FLAVOR )
+        nproc = qe62_nprocPerPool()
+      !SJ wann func
+      case( WANNIER_FLAVOR)
         nproc = qe62_nprocPerPool()
       case( ABINIT_FLAVOR )
         nproc = abi_nprocPerPool()
@@ -405,6 +437,9 @@ module ocean_dft_files
         call qe54_return_my_con_bands( nbands, ierr )
       case( QE62_FLAVOR )
         call qe62_return_my_con_bands( nbands, ierr )
+      !SJ Wann func
+      case( WANNIER_FLAVOR)
+        call qe62_return_my_con_bands( nbands, ierr )
       case default
         ierr = -1
     end select
@@ -425,6 +460,9 @@ module ocean_dft_files
       case( QE54_FLAVOR )
         call qe54_return_my_val_bands( nbands, ierr )
       case( QE62_FLAVOR )
+        call qe62_return_my_val_bands( nbands, ierr )
+      !SJ Wann func
+      case( WANNIER_FLAVOR)
         call qe62_return_my_val_bands( nbands, ierr )
       case default
         ierr = -1
@@ -447,6 +485,9 @@ module ocean_dft_files
       case( QE54_FLAVOR )
         call qe54_return_my_bands( nbands, ierr )
       case( QE62_FLAVOR )
+        call qe62_return_my_bands( nbands, ierr )
+      !SJ Wann func
+      case( WANNIER_FLAVOR)
         call qe62_return_my_bands( nbands, ierr )
       case( ABINIT_FLAVOR )
         call abi_return_my_bands( nbands, ierr )
@@ -475,6 +516,9 @@ module ocean_dft_files
         call qe54_is_my_kpt( ikpt, ispin, is_kpt, ierr )
       case( QE62_FLAVOR )
         call qe62_is_my_kpt( ikpt, ispin, is_kpt, ierr )
+      !SJ Wann func
+      case( WANNIER_FLAVOR)
+        call qe62_is_my_kpt( ikpt, ispin, is_kpt, ierr )
       case( ABINIT_FLAVOR )
         call abi_is_my_kpt( ikpt, ispin, is_kpt, ierr )
       case default
@@ -492,6 +536,9 @@ module ocean_dft_files
 
     select case( flavor )
       case( QE62_FLAVOR )
+        call qe62_read_gvecs_at_kpt( ikpt, ispin, gvecs, ierr )
+      !SJ Wann func
+      case( WANNIER_FLAVOR )
         call qe62_read_gvecs_at_kpt( ikpt, ispin, gvecs, ierr )
       case default
         write(6,*) "John hasn't implemented this"
@@ -519,6 +566,9 @@ module ocean_dft_files
       case( QE54_FLAVOR )
         call qe54_get_ngvecs_at_kpt( ikpt, ispin, gvecs, ierr )
       case( QE62_FLAVOR )
+        call qe62_get_ngvecs_at_kpt( ikpt, ispin, gvecs, ierr )
+      !SJ Wann func
+      case( WANNIER_FLAVOR)
         call qe62_get_ngvecs_at_kpt( ikpt, ispin, gvecs, ierr )
       case( ABINIT_FLAVOR )
         call abi_get_ngvecs_at_kpt( ikpt, ispin, gvecs, ierr )
@@ -550,6 +600,9 @@ module ocean_dft_files
         call qe54_get_ngvecs_at_kpt_split( ikpt, ispin, gvecs, ierr )
       case( QE62_FLAVOR )
         call qe62_get_ngvecs_at_kpt_split( ikpt, ispin, gvecs, ierr )
+      !SJ Wann func
+      case( WANNIER_FLAVOR)
+        call qe62_get_ngvecs_at_kpt_split( ikpt, ispin, gvecs, ierr )
       case( ABINIT_FLAVOR )
         call abi_get_ngvecs_at_kpt_split( ikpt, ispin, gvecs, ierr )
       case default
@@ -577,6 +630,9 @@ module ocean_dft_files
       case( QE54_FLAVOR )
         call qe54_read_at_kpt( ikpt, ispin, ngvecs, my_bands, gvecs, wfns, ierr )
       case( QE62_FLAVOR )
+        call qe62_read_at_kpt( ikpt, ispin, ngvecs, my_bands, gvecs, wfns, ierr )
+      !SJ wann func
+      case( WANNIER_FLAVOR)
         call qe62_read_at_kpt( ikpt, ispin, ngvecs, my_bands, gvecs, wfns, ierr )
       case( ABINIT_FLAVOR )
         call abi_read_at_kpt( ikpt, ispin, ngvecs, my_bands, gvecs, wfns, ierr )
@@ -610,6 +666,10 @@ module ocean_dft_files
       case( QE62_FLAVOR )
         call qe62_read_at_kpt_split( ikpt, ispin, valNGvecs, conNGvecs, valBands, conBands, &
                                     valGvecs, conGvecs, valUofG, conUofG, ierr )
+      !SJ Wann func
+      case( WANNIER_FLAVOR)
+        call qe62_read_at_kpt_split( ikpt, ispin, valNGvecs, conNGvecs, valBands, conBands, &
+                                    valGvecs, conGvecs, valUofG, conUofG, ierr )
       case( ABINIT_FLAVOR )
         call abi_read_at_kpt_split( ikpt, ispin, valNGvecs, conNGvecs, valBands, conBands, &
                                     valGvecs, conGvecs, valUofG, conUofG, ierr )
@@ -637,6 +697,9 @@ module ocean_dft_files
         call qe54_clean( ierr )
 
       case ( QE62_FLAVOR )
+        call qe62_clean( ierr )
+      !SJ Wann func
+      case ( WANNIER_FLAVOR)
         call qe62_clean( ierr )
 
       case ( ABINIT_FLAVOR )
@@ -678,6 +741,9 @@ module ocean_dft_files
             flavor = QE54_FLAVOR
           case ('qe62')
             flavor = QE62_FLAVOR
+          !SJ wann func
+          case ('wanqe')
+            flavor = WANNIER_FLAVOR 
           case ('abinit', 'abi')
             flavor = ABINIT_FLAVOR
           case default
@@ -703,6 +769,11 @@ module ocean_dft_files
         call qe54_read_init( comm, isGamma, isFullStorage, ierr )
 
       case( QE62_FLAVOR )
+
+        call qe62_read_init( comm, isGamma, isFullStorage, ierr )
+
+      !SJ Wann func
+      case( WANNIER_FLAVOR )
 
         call qe62_read_init( comm, isGamma, isFullStorage, ierr )
 
@@ -745,6 +816,11 @@ module ocean_dft_files
         call qe54_read_energies_single( myid, root, comm, energies, ierr )
 
       case( QE62_FLAVOR )
+
+        call qe62_read_energies_single( myid, root, comm, energies, ierr )
+
+      !SJ Wann func
+      case( WANNIER_FLAVOR )
 
         call qe62_read_energies_single( myid, root, comm, energies, ierr )
 
@@ -791,6 +867,10 @@ module ocean_dft_files
         endif
 
       case( QE62_FLAVOR )
+        call qe62_read_energies_split( myid, root, valEnergies, conEnergies, ierr )
+
+      !SJ Wann func
+      case( WANNIER_FLAVOR)
         call qe62_read_energies_split( myid, root, valEnergies, conEnergies, ierr )
 
       case( ABINIT_FLAVOR )

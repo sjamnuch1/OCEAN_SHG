@@ -184,6 +184,7 @@
             1
          ],
          "poolsize" : -1,
+	 "skip" : false,
          "toldfe" : -1
       },
       "diagonalization" : "default",
@@ -219,6 +220,7 @@
       "mixing_mode" : "plain",
       "ndiag" : -1,
       "noncolin" : false,
+      "nosym_scf" : false,
       "nspin" : 1,
       "nstep" : 50,
       "occopt" : 1,

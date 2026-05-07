@@ -12,6 +12,7 @@ function sphj0( x )
   !
   real( kind = kind( 1.0d0 ) ) :: tmp
   !
+  !SJ Taylor approximation for sin(x)/x as x->0
   if ( abs( x ) .lt. 0.0001d0 ) then
      tmp = 1 - x ** 2 / 6.0d0
   else 

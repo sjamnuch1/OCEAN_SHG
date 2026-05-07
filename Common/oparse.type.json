@@ -144,6 +144,7 @@
          "kmesh" : "af",
          "kshift" : "af",
          "poolsize" : "i",
+	 "skip" : "b",
          "toldfe" : "f"
       },
       "diagonalization" : "s",
@@ -175,6 +176,7 @@
       "mixing_mode" : "s",
       "ndiag" : "i",
       "noncolin" : "b",
+      "nosym_scf" : "b",
       "nspin" : "i",
       "nstep" : "i",
       "occopt" : "i",

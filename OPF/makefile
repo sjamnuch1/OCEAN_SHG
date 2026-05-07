@@ -13,9 +13,9 @@ install:
 	cp opf.pl $(INSTDIR)/ 
 	cp upf2shirley.pl $(INSTDIR)/
 	cp validate_opts.pl $(INSTDIR)/
-	@if [ -f '$(ONCVPSP_DIR)/src/oncvpsp.x' ] ; \
+	if [ -f '$(ONCVPSP_DIR)/src/oncvpsp.x' ] ; \
 	then \
-     cp $(ONCVPSP_DIR)/src/oncvpsp.x $(INSTDIR) ; \
+        cp $(ONCVPSP_DIR)/src/oncvpsp.x $(INSTDIR) ; \
 	fi
 
 clean:

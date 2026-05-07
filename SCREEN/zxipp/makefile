@@ -3,11 +3,12 @@ OBXPL = zobj/xippsin_lm.o zobj/xeqtanx.o zobj/rinvert.o zobj/mkvipt.o zobj/intva
 OBXPB = zobj/xippsin_box.o zobj/xeqtanx.o zobj/rinvert.o zobj/mkvipt.o zobj/intval.o
 OBXP2 = zobj/xippsin.o zobj/xeqtanx.o zobj/rinvert.o zobj/mkvipt.o zobj/intval.o
 OBVHO = zobj/vhommod.o zobj/levlou.o zobj/sphj0.o zobj/sphj1.o zobj/getomega.o
+OBVIS = zobj/visolatedmod.o zobj/levlou.o zobj/sphj0.o zobj/sphj1.o zobj/getomega.o
 OBRSC = zobj/rscombine.o zobj/intval.o
 OBXMN = zobj/mkximunu.o zobj/formreytab.o zobj/getprefs.o zobj/ylmeval.o
 OBDRX = zobj/dressximunu.o zobj/intval.o zobj/dftder3.o zobj/getc2.o zobj/cacorr.o zobj/cinvert.o
 #
-TARGETS = zexe/xipps.x zexe/vhommod.x zexe/rscombine.x  zexe/mkximunu.x zexe/dressximunu.x
+TARGETS = zexe/xipps.x zexe/vhommod.x zexe/rscombine.x  zexe/mkximunu.x zexe/dressximunu.x zexe/visolatedmod.x
 all: $(TARGETS)
 #
 #
@@ -25,6 +26,8 @@ zexe/mkximunu.x: $(OBXMN)
 	$(COMP) $(OPTS) $(OBXMN) -o zexe/mkximunu.x
 zexe/dressximunu.x: $(OBDRX)
 	$(COMP) $(OPTS) $(OBDRX) -o zexe/dressximunu.x
+zexe/visolatedmod.x: $(OBVIS)
+	$(COMP) $(OPTS) $(OBVIS) -o zexe/visolatedmod.x
 #
 zobj/xippsin_box.o: zf90/xipp_box.f90
 	$(COMP) $(OPTS) -c zf90/xipp_box.f90 -o zobj/xippsin_box.o
@@ -48,6 +51,8 @@ zobj/sphj1.o: zf90/sphj1.f90
 	$(COMP) $(OPTS) -c zf90/sphj1.f90 -o zobj/sphj1.o
 zobj/vhommod.o: zf90/vhommod.f90
 	$(COMP) $(OPTS) -c zf90/vhommod.f90 -o zobj/vhommod.o
+zobj/visolatedmod.o: zf90/visolatedmod.f90
+	$(COMP) $(OPTS) -c zf90/visolatedmod.f90 -o zobj/visolatedmod.o
 zobj/xippsin.o: zf90/xippsin.f90
 	$(COMP) $(OPTS) -c zf90/xippsin.f90 -o zobj/xippsin.o
 zobj/xeqtanx.o: zf90/xeqtanx.f90

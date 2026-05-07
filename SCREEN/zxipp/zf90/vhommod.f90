@@ -133,8 +133,8 @@ program vhommod
   wf = qf ** 2 / 2
   lam = dsqrt( wpsqd / ( wf ** 2 * ( epsq0 - 1 ) ) )
   !
-  nq = qmax / dq
-  dq = qf * dq
+  nq = qmax / dq !Default is 100
+  dq = qf * dq !
   allocate( tab1( nr, nq ), bq( nq ), tabjqr2( nq, nshells ) )
   !
   if( thickShell ) then
@@ -171,9 +171,9 @@ program vhommod
   else
     do k = 1, nshells
       r2 = shells( k )
-      do i = 1, nq
-        q = dq * ( i - 0.5d0 )
-        tabjqr2( i, k ) = sphj0( q * r2 )
+      do i = 1, nq !Default is 100 for nq
+        q = dq * ( i - 0.5d0 ) !qf = ( 3 * pi ** 2 * nav ) ** ( 1.d0 / 3.d0 ) then dq = qf * dq
+        tabjqr2( i, k ) = sphj0( q * r2 ) !sphj0 -> sin(x)/x
       enddo
     enddo
   endif
@@ -186,6 +186,7 @@ program vhommod
 !       jqr2 = sphj0( q * r2 )
        qq = q / qf
        eps = 1 / levlou( qq, qf, lam )
+       WRITE(2002, '(I8,E24.16,E24.16,E24.16)') i,q,qq,eps
        bq( i ) = ( 1 - 1 / eps ) / ( 4 * pi )
        r1 = dr / 2
        do j = 1, nr

@@ -126,7 +126,7 @@ copyAndCompare( $newDftData->{'psp'}, $commonOceanData->{'psp'}, $dftData->{'psp
 my @generalList = ( "degauss", "ecut", "fband", "functional", "noncolin", "nspin", "occopt", 
                     "program", "smag", "spinorb", "verbatim", "isolated" );
 my @generalSecondaryList = ( "calc_force", "calc_stress", "diagonalization", "mixing", "mixing_mode",
-                             "nstep", "redirect", "startingwfc", "startingpot", "tmp_dir", "abpad" );
+                             "nstep", "redirect", "startingwfc", "startingpot", "tmp_dir", "abpad","nosym_scf" );
 $newDftData->{'general'} = {};
 copyAndCompare( $newDftData->{'general'}, $commonOceanData->{'dft'}, $dftData->{'general'},
                 $newDftData->{'scf'}, \@generalList );
@@ -157,7 +157,7 @@ if( $newDftData->{'general'}->{'ldau'}->{'enable'} )
 
 
 # and finally density run information
-my @scfList = ( "auto", "kmesh", "kshift", "toldfe" );
+my @scfList = ( "auto", "kmesh", "kshift", "toldfe","skip" ); #SJ Added skip tag
 my @scfSecondaryList = ( "poolsize" );
 
 copyAndCompare( $newDftData->{'scf'}, $commonOceanData->{'dft'}->{'den'}, $dftData->{'scf'}, 
@@ -463,8 +463,11 @@ unless( $newDftData->{'scf'}->{'complete'} )
 {
   my $errorCode = 0;
   my $t0 = [gettimeofday];
+  print "$newDftData->{'scf'}->{'skip'}\n";
   if( $newDftData->{'general'}->{'program'} eq "qe" ) {
+    print "Calling QErunDensity\n";
     $errorCode = QErunDensity( $newDftData );
+    print "Done with QErunDensity\n";
     print "$errorCode\n";
   } elsif ( $newDftData->{'general'}->{'program'} eq "abi" ) {
     $errorCode = ABIrunDensity( $newDftData );

@@ -597,6 +597,7 @@ module ocean_qe62_files
       nbc = brange(4)-brange(3) + 1
       allocate( internal_val_energies( nbv, nkpts, nspin ), internal_con_energies( nbc, nkpts, nspin ) )
 
+      !This is old flavor (~v2.9)
       inquire( file='enkfile_raw', exist=ex )
       if( ex ) then
         open( unit=99, file='enkfile_raw', form='formatted', status='old')

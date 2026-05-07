@@ -182,8 +182,19 @@ sub QEsetupNSCF
 
 sub QErunDensity
 {
+	
   my $hashRef = $_[0];
-
+  #SJ to skip SCF part
+  print "In QERunDensity\n";
+  print "$hashRef->{'scf'}->{'kmesh'}[0]\n";
+  print "$hashRef->{'scf'}->{'skip'}\n";
+  if( $hashRef->{'scf'}->{'skip'})
+  {
+     print "Skipping SCF calculation\n";
+     my $errorCode = QEparseOut( "scf.out", $hashRef->{'scf'} );
+     return $errorCode;
+  #return 0;
+  }
   # Make SCF k-point string
   my $kptString;
   if( $hashRef->{'scf'}->{'kmesh'}[0] * $hashRef->{'scf'}->{'kmesh'}[1] * $hashRef->{'scf'}->{'kmesh'}[2] == 1 
@@ -285,7 +296,7 @@ sub QErunDensity
   if( $nbd > 1 ) {
     $cmdLine .= " -pd true -ntg $nbd";
   }
-
+  
   QErunPW( $hashRef->{'general'}->{'redirect'}, $prefix, $cmdLine, "scf.in", "scf.out" );
 
 
@@ -1031,9 +1042,10 @@ sub QEprintInput
   if( $calcFlag )
   {
     $calc = 'scf';
-    $tstress = 'true' if( $generalRef->{'general'}->{'calc_stress'} );
-    $tprnfor = 'true' if( $generalRef->{'general'}->{'calc_force'} );
-    $nosyminv = 'false';
+    $tstress = 'true'  if( $generalRef->{'general'}->{'calc_stress'} );
+    $tprnfor = 'true'  if( $generalRef->{'general'}->{'calc_force'} );
+    $nosyminv = '.false.';
+    $nosyminv = 'true' if( $generalRef->{'general'}->{'nosym_scf'}); #SJ: nosym can be set for scf
     $startingPot = 'atomic';
     if( $generalRef->{'general'}->{'startingpot'} =~ m/file/ )
     {
@@ -1251,6 +1263,15 @@ sub QEprintInput
       $s =~ s/\s+J /\nJ /ig;
       $s =~ s/\s+J0 /\nJ0 /ig;
       $s =~ s/\s+B /\nB /ig;
+
+      $s = join("\n", map {
+          my @cols = split(/\s+/, $_, 3);  # Split into at most 3 columns to preserve additional data
+          if (defined $cols[1]) 
+          {
+          $cols[1] = ucfirst($cols[1]);  # Uppercase first letter of 2nd column
+          }
+    join(" ", @cols);
+} split(/\n/, $s));
       print $fh $s . "\n";
   }
 
