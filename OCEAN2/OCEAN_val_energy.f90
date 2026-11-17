@@ -399,7 +399,7 @@ module OCEAN_val_energy
         write(6,*) 'Could not read a valid val_occupation_energies.dat'
       else
         nb = size(spectrum, 1)
-        if (nb < sys%brange(4)) then
+        if (nb < max(sys%brange(2), sys%brange(4))) then
           status = 1
         else if (maxval(abs(spectrum(sys%brange(3):sys%brange(4),:,:) - raw_con)) > 1.0e-8_DP) then
           status = 1
@@ -462,6 +462,7 @@ module OCEAN_val_energy
     use OCEAN_mpi, only: myid, root
     use OCEAN_psi, only: OCEAN_vector
     use OCEAN_val_occupations, only: pair_occupation, kB_hartree
+    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
     type(O_system), intent(in) :: sys
     real(DP), intent(in) :: raw_val(:,:,:), raw_con(:,:,:), eval(:,:,:), econ(:,:,:), mu
     type(OCEAN_vector), intent(inout) :: allow, pair_weight
@@ -471,6 +472,12 @@ module OCEAN_val_energy
 
     ! All ranks receive the completed arrays in OCEAN_read_energies.
     if (myid /= root) return
+    if (.not. all(ieee_is_finite(raw_val)) .or. .not. all(ieee_is_finite(raw_con)) .or. &
+        .not. all(ieee_is_finite(eval)) .or. .not. all(ieee_is_finite(econ))) then
+      write(6,*) 'Finite occupations require finite DFT and corrected endpoint energies'
+      ierr = 178
+      return
+    endif
     lower = -huge(lower)
     upper = minval(econ(size(econ,1),:,:))
     call read_optional_cutoff('clipl', lower, ierr)
@@ -512,6 +519,7 @@ module OCEAN_val_energy
   end subroutine val_thermal_pairs
 
   subroutine read_optional_cutoff(filename, cutoff, ierr)
+    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
     character(len=*), intent(in) :: filename
     real(DP), intent(inout) :: cutoff
     integer, intent(inout) :: ierr
@@ -524,6 +532,7 @@ module OCEAN_val_energy
     if (ierr == 0) then
       read(unit, *, iostat=ierr) cutoff
       close(unit, iostat=close_status)
+      if (.not. ieee_is_finite(cutoff)) ierr = 178
     endif
     if (ierr /= 0) write(6,*) 'Could not read energy cutoff in ', filename
   end subroutine read_optional_cutoff
@@ -548,6 +557,7 @@ module OCEAN_val_energy
     integer, intent( inout ) :: ierr
     !
     logical :: have_gw
+    integer :: occupation_status
     character( len=4 ) :: gw_control
 
     did_gw_correction = .false.
@@ -560,6 +570,11 @@ module OCEAN_val_energy
         rewind(99)
         read(99,*) gw_control
         close(99)
+        if (sys%val_fermi .and. gw_control /= 'none' .and. gw_control /= 'cstr') then
+          write(6,*) 'Finite valence occupations support only gw.control = none or cstr'
+          ierr = 178
+        endif
+        if (.not. sys%val_fermi .or. ierr == 0) then
         select case (gw_control)
 !        case ('full')
 !          call val_abinit_fullgw( sys, ierr, .true. )
@@ -579,7 +594,18 @@ module OCEAN_val_energy
           write(6,*) '   ', gw_control
           have_gw = .false.
         end select
+        endif
       endif
+    endif
+    ! Propagate validation errors before a collective overwrites root's ierr.
+    if (sys%val_fermi) then
+      occupation_status = ierr
+#ifdef MPI
+      call MPI_BCAST(occupation_status, 1, MPI_INTEGER, root, comm, ierr)
+      if (ierr /= MPI_SUCCESS) return
+#endif
+      ierr = occupation_status
+      if (ierr /= 0) return
     endif
 #ifdef MPI
     call MPI_BCAST( have_gw, 1, MPI_LOGICAL, root, comm, ierr )

@@ -1167,6 +1167,10 @@ sub prepareValOccupations {
     if $val->{'bwflg'} || $val->{'backf'};
   die "Finite valence occupations do not support imaginary quasiparticle energies\n"
     if $val->{'gw'}->{'control'} eq 'ibnd';
+  # writeValAuxFiles exports only none/cstr. Other legacy controls would be
+  # silently replaced by none, so do not advertise them in the thermal path.
+  die "Finite valence occupations support only gw.control = none or cstr\n"
+    unless $val->{'gw'}->{'control'} eq 'none' || $val->{'gw'}->{'control'} eq 'cstr';
   die "Finite valence occupations take the electron count from DFT. Remove the legacy doping file.\n"
     if -e 'doping';
 

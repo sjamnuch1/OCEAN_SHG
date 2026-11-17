@@ -35,15 +35,23 @@ energies. Only positive-weight pairs in the prepared optical band space pass the
 binary mask. The optical source is multiplied by `sqrt(F)` before
 normalization. The interaction is multiplied on both sides by the diagonal
 operator `S = sqrt(F)`, so the Hamiltonian is `D + S K S`. The one-electron
-energy difference `D` still uses any real quasiparticle corrections specified
-for the optical calculation.
+energy difference `D` uses the real scissor/stretch correction specified by
+`bse.val.gw.control { cstr }`, while occupations retain the raw DFT energies.
+This finite-occupation workflow accepts `gw.control = none` or `cstr` only;
+other legacy/manual GW formats are rejected. The existing CNBSE exporter only
+writes these two controls, so accepting other values would silently omit the
+requested correction.
 
 Use this mode with collinear QE band eigenstates and the uniform OCEAN BSE mesh.
-It supports the forward Haydock and GMRES paths. Backward-sector, backf,
+It supports forward Haydock, GMRES and exact diagonalization. Backward-sector, backf,
 Wannier-basis, spinor, and imaginary quasiparticle energies are unsupported.
 The legacy CNBSE `doping` file is incompatible with this mode. The count solver
 takes its target from DFT. The optical space comes from PREP, and the
 calculation does not add a Drude term or additional intraband states.
+For spin-polarized inputs, one common chemical potential conserves the total
+electron count; separate spin populations or magnetization are not constrained.
+Self-consistent dielectric restarts reapply the same occupation weights to
+each freshly loaded optical source.
 
 To isolate the electronic occupation contribution for BiVO4, run the same
 snapshot with `type = none` and then with `type = fermi` at the desired
@@ -52,9 +60,34 @@ temperature effects can still be studied by averaging spectra across the MD
 snapshot ensembles. An intrinsic wide-gap snapshot can show very little
 occupation-induced change over 300–500 K.
 
-Run the independent-particle and exchange regressions with a compiled OCEAN:
+Run the spectral regressions with a compiled OCEAN:
 
 ```bash
 python3 TEST/val_occupations/test_spectra.py OCEAN2/ocean.x
 python3 TEST/val_occupations/test_spectra.py OCEAN2/ocean.x mpirun -n 2
 ```
+
+These check independent-particle oscillator strengths, exchange-kernel scaling,
+dielectric restarts, the cold limit, 300/500 K inputs, spin degeneracy, scissors,
+GMRES, exact diagonalization, and input rejection. The fixtures are synthetic;
+they do not establish convergence of a BiVO4 spectrum.
+
+The export test needs only Perl and its core modules:
+
+```bash
+perl TEST/val_occupations/test_export.pl
+```
+
+Build the numerical unit test with the same Fortran compiler used for OCEAN
+(replace `gfortran` as appropriate):
+
+```bash
+gfortran -I OCEAN2 TEST/val_occupations/test_occupations.f90 \
+  OCEAN2/OCEAN_val_occupations.o -o /tmp/test_val_occupations
+/tmp/test_val_occupations
+```
+
+This checks intrinsic carrier balance when occupation tails underflow,
+fractional counts, unequal spin spectra, nonuniform integration weights,
+fixed-mu count residuals, cancellation in pair weights, and invalid inputs.
+See `DOC/valence_occupations_review.md` for the review findings and validation limits.

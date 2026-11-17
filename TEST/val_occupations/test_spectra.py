@@ -43,7 +43,8 @@ KT = 3000 * 8.617333262145e-5
 EDGES = [-0.01 * HARTREE_EV, 0.01 * HARTREE_EV, 0.03 * HARTREE_EV]
 
 
-def run(command, settings=None, bad_spectrum=False, bubble=False, scales=(1.0, 1.0), nelec=2):
+def run(command, settings=None, bad_spectrum=False, bubble=False, scales=(1.0, 1.0), nelec=2,
+        extra=None, expected_error=None, require_restart=False, output=("opcons", 2, 1)):
     with TemporaryDirectory() as tmp:
         directory = Path(tmp)
         inputs = INPUTS.copy()
@@ -53,6 +54,7 @@ def run(command, settings=None, bad_spectrum=False, bubble=False, scales=(1.0, 1
             del inputs["val_occupation_energies.dat"]
         else:
             inputs["val_occupation.ipt"] = settings
+        inputs.update(extra or {})
         if bad_spectrum:
             inputs["val_occupation_energies.dat"] = inputs["val_occupation_energies.dat"].replace("0.03", "0.04")
         if bubble:
@@ -71,16 +73,25 @@ def run(command, settings=None, bad_spectrum=False, bubble=False, scales=(1.0, 1
             (directory / "con.u2.dat").write_bytes(struct.pack(f"={len(con)}d", *con))
         for filename, contents in inputs.items():
             (directory / filename).write_text(contents + "\n")
-        (directory / "ptmels.dat").write_bytes(struct.pack("=8d", *(scales[0], 0.0, scales[1], 0.0) * 2))
+        nspin = int(inputs["nspin"])
+        (directory / "ptmels.dat").write_bytes(struct.pack(f"={8*nspin}d", *(scales[0], 0.0, scales[1], 0.0) * (2*nspin)))
         result = subprocess.run(command, cwd=directory, capture_output=True, text=True, timeout=40)
+        if expected_error:
+            assert result.returncode != 0, result.stdout
+            assert expected_error in result.stdout, result.stdout + result.stderr
+            return
         if bad_spectrum:
             assert result.returncode != 0, result.stdout
             assert "counting spectrum disagrees" in result.stdout, result.stdout + result.stderr
             return
-        if result.returncode != 0 or not (directory / "opcons").exists():
+        filename, column, skip = output
+        if result.returncode != 0 or not (directory / filename).exists():
             raise RuntimeError(result.stdout + result.stderr)
-        rows = (directory / "opcons").read_text().splitlines()[1:]
-        return [(float(row.split()[0]), float(row.split()[2])) for row in rows]
+        if require_restart:
+            assert 'Restart eps1(0):' in result.stdout, result.stdout
+        rows = (directory / filename).read_text().splitlines()[skip:]
+        assert rows, result.stdout
+        return [(float(row.split()[0]), float(row.split()[column])) for row in rows]
 
 
 def f(energy, mu):
@@ -125,6 +136,57 @@ def main():
     for (omega, a), (_, b) in zip(weighted, expected):
         assert isclose(a, b, rel_tol=1e-7), (omega, a, b)
     print("Occupation-weighted exchange spectrum agrees with explicit row and column scaling.")
+    # Recomputing epsilon reloads the bare source. Its occupation weighting must
+    # survive every reload, even when the kernel is independent of epsilon.
+    restarted = run(command, "3000 fixed 0", extra={
+        "conveps.ipt": "0.01", "bse.in": "0\n0\nhay\n8 101 0 18 0.1 0",
+    }, require_restart=True)
+    ordinary = run(command, "3000 fixed 0")
+    for (omega, a), (_, b) in zip(restarted, ordinary):
+        assert isclose(a, b, rel_tol=1e-7), ("restart", omega, a, b)
+    print("Self-consistent epsilon restarts preserve the weighted optical source.")
+    for temperature in (10, 300, 500):
+        cold = run(command, f"{temperature} conserve 0")
+        # At 500 K this toy gap still has a small, resolvable occupation effect.
+        if temperature == 10:
+            for (_, a), (_, b) in zip(cold, legacy):
+                assert isclose(a, b, rel_tol=1e-10), ("cold limit", a, b)
+    spin = {"nspin": "2", "enkfile": (INPUTS["enkfile"] + "\n") * 2,
+            "val_occupation_energies.dat": "4 2 2\n" + "0.5 -0.01 0.01 0.03 1.0\n" * 4}
+    for (_, a), (_, b) in zip(run(command, "3000 fixed 0", extra=spin), ordinary):
+        assert isclose(a, b, rel_tol=1e-10), ("spin degeneracy", a, b)
+    print("Cold-limit legacy equivalence, 300/500 K runs and explicit spin degeneracy passed.")
+    # Scissors change optical poles but must not change raw-DFT occupations.
+    scissors = {"gw_control": "cstr", "gw_val_cstr": "0.5 .false. 0 0"}
+    corrected = run(command, "3000 fixed 0", extra=scissors)
+    reference = run(command, extra=scissors, scales=scales)
+    for (_, a), (_, b) in zip(corrected, reference):
+        assert isclose(a, b, rel_tol=1e-7), ("scissors", a, b)
+    # Exact diagonalization independently constructs the interaction matrix.
+    exact = {"bse.in": "0\n0\nexa\n2 101 0 18 0.1 0"}
+    ref_exact = run(command, bubble=True, scales=scales, extra=exact, output=("exact_plot", 2, 0))
+    thermal_exact = run(command, "3000 fixed 0", bubble=True, extra=exact, output=("exact_plot", 2, 0))
+    for (_, a), (_, b) in zip(thermal_exact, ref_exact):
+        assert isclose(a, b, rel_tol=2e-5), ("exact exchange", a, b)
+    print("Real scissor corrections and exact-diagonalization exchange scaling passed.")
+    inverse = {"bse.in": "0\n0\ninv\n4 0.1 0.1 1e-10\nloop\n0.2 1.4 0.4"}
+    reference = run(command, bubble=True, scales=scales, extra=inverse, output=("opcons", 2, 0))
+    weighted = run(command, "3000 fixed 0", bubble=True, extra=inverse, output=("opcons", 2, 0))
+    for (_, a), (_, b) in zip(weighted, reference):
+        assert isclose(a, b, rel_tol=2e-7), ("GMRES exchange", a, b)
+    print("GMRES exchange spectrum agrees with explicit scaling.")
+    for settings, extra, message in [
+        ("0 conserve 0", {}, "Invalid finite occupations input"),
+        ("3000 fixed NaN", {}, "Invalid finite occupations input"),
+        ("3000 fixed 100", {}, "Increase the NSCF band count"),
+        ("3000 fixed -1000", {}, "optical source has zero norm"),
+        ("3000 fixed 0", {"clipl": "NaN"}, "Could not read energy cutoff"),
+        ("3000 fixed 0", {"backf": "1"}, "forward valence-only"),
+        ("3000 fixed 0", {"gw_control": "band"}, "only gw.control = none or cstr"),
+        ("3000 fixed 0", {"gw_control": "list"}, "only gw.control = none or cstr"),
+    ]:
+        run(command, settings, extra=extra, expected_error=message)
+    print("Invalid settings, insufficient bands, empty source and incompatible mode fail cleanly.")
 
 
 if __name__ == "__main__":

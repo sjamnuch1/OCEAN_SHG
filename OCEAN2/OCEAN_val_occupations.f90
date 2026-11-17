@@ -45,7 +45,7 @@ contains
     if (ierr /= 0) return
     read(unit, *, iostat=ierr) nb, file_nk, file_ns
     if (ierr == 0) then
-      if (nb < 1 .or. file_nk /= nk .or. file_ns /= ns) ierr = 1
+      if (nb < 1 .or. nk < 1 .or. ns < 1 .or. ns > 2 .or. file_nk /= nk .or. file_ns /= ns) ierr = 1
     endif
     if (ierr == 0) allocate(energies(nb,nk,ns), weights(nk,ns), stat=ierr)
     if (ierr == 0) then
@@ -64,6 +64,8 @@ contains
       return
     endif
     if (any(weights <= 0.0_DP) .or. any(abs(sum(weights, dim=1) - 1.0_DP) > 1.0e-10_DP)) ierr = 1
+    ! The last-band convergence check assumes QE's ascending band order.
+    if (any(energies(2:,:,:) < energies(:nb-1,:,:))) ierr = 1
   end subroutine read_counting_spectrum
 
   subroutine solve_chemical_potential(energies, weights, nelec, kt, fixed, mu, residual, top, ierr)
@@ -80,6 +82,11 @@ contains
     if (kt <= 0.0_DP) return
     ns = size(energies, 3)
     nb = size(energies, 1)
+    if (ns < 1 .or. ns > 2 .or. nb < 1 .or. size(energies,2) < 1) return
+    if (size(weights,1) /= size(energies,2) .or. size(weights,2) /= ns) return
+    if (.not. all(ieee_is_finite(energies)) .or. .not. all(ieee_is_finite(weights))) return
+    if (any(weights <= 0.0_DP) .or. any(abs(sum(weights,dim=1)-1.0_DP) > 1.0e-10_DP)) return
+    if (fixed .and. .not. ieee_is_finite(mu)) return
     degeneracy = real(3-ns, DP) ! one spin channel represents two collinear spin states
     target = nelec / degeneracy
     if (target <= 0.0_DP .or. target >= real(nb, DP)*ns) return
@@ -90,6 +97,7 @@ contains
     if (.not. fixed) then
       lo = minval(energies) - 64.0_DP * kt
       hi = maxval(energies) + 64.0_DP * kt
+      if (.not. ieee_is_finite(lo) .or. .not. ieee_is_finite(hi)) return
       do iter = 1, 200
         mid = lo + (hi-lo)*0.5_DP
         if (mid <= lo .or. mid >= hi) exit
@@ -100,6 +108,7 @@ contains
         else
           cmp = count_residual(mid)
         endif
+        if (.not. ieee_is_finite(cmp)) return
         if (cmp == 0.0_DP) exit
         if (cmp < 0.0_DP) then
           lo = mid
@@ -112,6 +121,7 @@ contains
     balance = count_residual(mu)
     residual = degeneracy * balance
     top = maxval(fermi_occupation((energies(nb,:,:) - mu)/kt))
+    if (.not. ieee_is_finite(mu) .or. .not. ieee_is_finite(residual) .or. .not. ieee_is_finite(top)) return
     if (.not. fixed .and. abs(residual) > 1.0e-9_DP) return
     ierr = 0
 

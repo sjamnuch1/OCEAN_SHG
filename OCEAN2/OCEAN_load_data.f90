@@ -206,6 +206,10 @@ subroutine OCEAN_reload_val( sys, hay_vec, ierr )
     !       2) Uniform energy cutoff for upper bands
     call OCEAN_energies_allow( sys, hay_vec, ierr )
     if( ierr .ne. 0 ) return
+    ! Reload reads bare matrix elements again; restore the same S source as
+    ! the initial load before normalizing its oscillator strength.
+    call OCEAN_energies_weight_valence(sys, hay_vec, ierr, use_full=.false.)
+    if (ierr /= 0) return
     call OCEAN_psi_pnorm( sys, hay_vec, ierr )
     if( ierr .ne. 0 ) return
     if( myid .eq. root ) write(6,*) 'Trim & scale complete'
