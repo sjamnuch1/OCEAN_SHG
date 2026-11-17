@@ -51,6 +51,10 @@ subroutine OCEAN_action_h1(sys, inter_scale, psi, new_psi, ierr, backwards, hfla
     else
       back = .false.
     endif
+    if (sys%val_fermi .and. sys%cur_run%have_val) then
+      call OCEAN_xact(sys, inter_scale, psi, new_psi, ierr, back, hflag)
+      return
+    endif
 !sys%cur_run%have_val = .true.
 
     call OCEAN_psi_zero_full( new_psi, ierr )
@@ -375,7 +379,7 @@ end subroutine OCEAN_action_h1
      !write OCEAN_vec after mult after all of the if statements to hopefully get
      !only the one final %r out.  
     if( sys%cur_run%have_val ) then
-      if( loud_valence ) then
+      if( loud_valence .and. .not. sys%val_fermi ) then
         !JTV
         ! Loud valence hasn't been tested in a while!!
 !        write(6,*) 'LOUD VALENCE NEEDS TESTING AND FIXING!!!'
@@ -526,6 +530,8 @@ end subroutine OCEAN_action_h1
         if( ierr .ne. 0 ) return
         call OCEAN_energies_allow_full( sys, psi_o, ierr )
         if( ierr .ne. 0 ) return
+        call OCEAN_energies_weight_valence(sys, psi_o, ierr, use_full=.true.)
+        if (ierr /= 0) return
         !TODO combine bfn with allow
         if( sys%cur_run%backf ) then
           call OCEAN_energies_bfnorm( sys, psi_o, ierr )
@@ -560,6 +566,8 @@ end subroutine OCEAN_action_h1
 
         call OCEAN_energies_allow_full( sys, new_psi, ierr )
         if( ierr .ne. 0 ) return
+        call OCEAN_energies_weight_valence(sys, new_psi, ierr, use_full=.true.)
+        if (ierr /= 0) return
         if( sys%cur_run%backf ) then
           call OCEAN_energies_bfnorm( sys, new_psi, ierr )
           if( ierr .ne. 0 ) return

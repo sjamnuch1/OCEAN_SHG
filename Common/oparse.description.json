@@ -56,6 +56,13 @@
          "value" : "The control value sets the temperature (in Ha.) for a Fermi distribution or the allowed weight (range between 0 and 1) for 'fixed'."
       },
       "val" : {
+         "occupation" : {
+            "." : "Equilibrium electronic occupations for forward valence BSE with Quantum ESPRESSO.",
+            "type" : "Supported modes are none (legacy) and fermi.",
+            "temperature" : "Electronic temperature in kelvin, strictly positive in fermi mode.",
+            "mu_mode" : "Conserve the electron count (conserve) or use a specified chemical potential (fixed).",
+            "mu" : "Fixed chemical potential in eV on the raw QE eigenvalue energy reference."
+         },
          "aldaf" : "b",
          "backf" : "b",
          "bande" : "b",

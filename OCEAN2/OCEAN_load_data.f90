@@ -68,6 +68,8 @@ subroutine OCEAN_load_data( sys, hay_vec, ierr )
     !       2) Uniform energy cutoff for upper bands
     call OCEAN_energies_allow( sys, hay_vec, ierr )
     if( ierr .ne. 0 ) return
+    call OCEAN_energies_weight_valence(sys, hay_vec, ierr, use_full=.false.)
+    if (ierr /= 0) return
     if( sys%cur_run%backf ) then
       call OCEAN_energies_bfnorm( sys,  hay_vec, ierr )
       if( ierr .ne. 0 ) return

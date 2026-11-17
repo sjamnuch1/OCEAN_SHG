@@ -8,7 +8,7 @@
 program ocean
   use AI_kinds, only : DP
   use OCEAN_mpi, only : myid, root, nproc, comm, &
-                        OCEAN_mpi_init, OCEAN_mpi_finalize
+                        OCEAN_mpi_init, OCEAN_mpi_finalize, MPI_ABORT
   use OCEAN_system, only : o_system, OCEAN_sys_init, OCEAN_sys_update
 !  use OCEAN_haydock
   use OCEAN_psi, only : ocean_vector
@@ -19,7 +19,7 @@ program ocean
 
   implicit none
 
-  integer :: ierr
+  integer :: ierr, abort_status
   type( o_system ) :: sys
   type(ocean_vector) :: hay_vec
 
@@ -38,6 +38,7 @@ program ocean
 
 
   call ocean_sys_init( sys, ierr )
+  if (sys%val_fermi .and. ierr /= 0) goto 111
 
   call OCEAN_tk_init()
 
@@ -90,7 +91,10 @@ program ocean
   call ocean_mpi_finalize( ierr )
 
 111 continue
-  if( ierr .ne. 0 ) write(6,*) '!!', ierr
+  if( ierr .ne. 0 ) then
+    write(6,*) '!!', ierr
+    if (sys%val_fermi) call MPI_ABORT(comm, 1, abort_status)
+  endif
 
 
 end program ocean

@@ -17,6 +17,7 @@ module OCEAN_energies
   type( OCEAN_vector ) :: p_energy
   type( OCEAN_vector ) :: allow
   type( OCEAN_vector ) :: initial_allow
+  type( OCEAN_vector ) :: val_pair_weight
 !  !TODO: remove/clean allow_sqrt
 !  type( OCEAN_vector ) :: allow_sqrt
   type( OCEAN_vector ) :: bfn ! bfnorm vector
@@ -31,11 +32,23 @@ module OCEAN_energies
   public :: OCEAN_energies_allow, OCEAN_energies_val_sfact, OCEAN_energies_val_act, &
             OCEAN_energies_val_load, OCEAN_energies_act, OCEAN_energies_init, OCEAN_energies_load
   public :: OCEAN_energies_resetAllow, OCEAN_energies_allow_full, OCEAN_energies_sfact_copy
-  public :: OCEAN_energies_initial_allow
+  public :: OCEAN_energies_initial_allow, OCEAN_energies_weight_valence
   public :: OCEAN_energies_single
   public :: OCEAN_energies_bfnorm
   
   contains
+
+  subroutine OCEAN_energies_weight_valence(sys, psi, ierr, use_full)
+    use OCEAN_system, only: O_system
+    use OCEAN_psi, only: OCEAN_vector, OCEAN_psi_2element_mult
+    type(O_system), intent(in) :: sys
+    type(OCEAN_vector), intent(inout) :: psi
+    integer, intent(inout) :: ierr
+    logical, intent(in) :: use_full
+
+    if (.not. sys%val_fermi) return
+    call OCEAN_psi_2element_mult(psi, val_pair_weight, ierr, is_real_only=.true., use_full=use_full)
+  end subroutine OCEAN_energies_weight_valence
 
   subroutine OCEAN_energies_sfact_copy( sys, psi_in, psi_out, ierr )
     use OCEAN_system, only : O_system
@@ -204,7 +217,15 @@ module OCEAN_energies
       call OCEAN_psi_zero_full( bfn, ierr )
       if( ierr .ne. 0 ) return
       
-      call OCEAN_read_energies( sys, p_energy, allow, ierr )
+      if (sys%val_fermi) then
+        call OCEAN_psi_new(val_pair_weight, ierr)
+        if (ierr /= 0) return
+        call OCEAN_psi_zero_full(val_pair_weight, ierr)
+        if (ierr /= 0) return
+        call OCEAN_read_energies(sys, p_energy, allow, ierr, val_pair_weight)
+      else
+        call OCEAN_read_energies( sys, p_energy, allow, ierr )
+      endif
       if( ierr .ne. 0 ) return
 
 !      call OCEAN_psi_copy_full( allow_sqrt, allow, ierr )

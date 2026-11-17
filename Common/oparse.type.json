@@ -53,6 +53,12 @@
          "value" : "f"
       },
       "val" : {
+         "occupation" : {
+            "type" : "s",
+            "temperature" : "f",
+            "mu_mode" : "s",
+            "mu" : "f"
+         },
          "aldaf" : "b",
          "backf" : "b",
          "bande" : "b",

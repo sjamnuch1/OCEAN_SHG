@@ -10,6 +10,7 @@
 use strict;
 
 use POSIX;
+use POSIX qw( isfinite );
 require JSON::PP;
 use JSON::PP;
 
@@ -17,6 +18,7 @@ use Cwd 'abs_path';
 use Cwd;
 use File::Spec::Functions;
 use File::Copy;
+use Scalar::Util qw( looks_like_number );
 
 use FindBin;
 use lib $FindBin::Bin;
@@ -145,6 +147,7 @@ copyAndCompare( $newBSEdata->{'computer'}, $commonOceanData->{'computer'}, $bseD
 CalcParams( $newBSEdata, $commonOceanData, $bseData );
 
 BSEParams( $newBSEdata, $commonOceanData, $bseData );
+prepareValOccupations( $newBSEdata, $commonOceanData, $prepData, $bseData );
 
 if( $haveScreen ) { 
   screenParams( $newBSEdata, $screenData, $bseData );
@@ -1140,6 +1143,105 @@ sub writeCoreAuxFiles {
   
 }
 
+sub prepareValOccupations {
+  my ($run, $common, $prep, $previous) = @_;
+  my $settings = $common->{'bse'}->{'val'}->{'occupation'} // {};
+  my $type = $settings->{'type'} // 'none';
+  die "bse.val.occupation.type must be none or fermi\n" unless $type eq 'none' || $type eq 'fermi';
+  # The input file is also used by ocean.x directly. Remove any stale copy on a legacy run.
+  foreach my $file ('val_occupation.ipt', 'val_occupation_energies.dat') {
+    unlink $file or die "Failed to remove $file: $!\n" if -e $file;
+  }
+  if ($type eq 'none') {
+    $run->{'bse'}->{'complete'} = JSON::PP::false
+      if exists $previous->{'bse'}->{'val_occupation_signature'};
+    return;
+  }
+
+  die "Finite valence occupations require calc.mode = val\n" unless $run->{'calc'}->{'mode'} eq 'val';
+  my $val = $run->{'bse'}->{'val'};
+  my $dft = $common->{'dft'};
+  die "Finite valence occupations currently require collinear Quantum ESPRESSO states in the band basis\n"
+    if $dft->{'program'} ne 'qe' || $dft->{'noncolin'} || $dft->{'spinorb'} || $prep->{'bse'}->{'wann'};
+  die "Finite valence occupations require forward BSE (bwflg and backf disabled)\n"
+    if $val->{'bwflg'} || $val->{'backf'};
+  die "Finite valence occupations do not support imaginary quasiparticle energies\n"
+    if $val->{'gw'}->{'control'} eq 'ibnd';
+  die "Finite valence occupations take the electron count from DFT. Remove the legacy doping file.\n"
+    if -e 'doping';
+
+  my $temperature = $settings->{'temperature'} // 0;
+  die "bse.val.occupation.temperature must be finite and positive (kelvin)\n"
+    unless looks_like_number($temperature) && isfinite($temperature) && $temperature > 0;
+  my $mu_mode = $settings->{'mu_mode'} // 'conserve';
+  die "bse.val.occupation.mu_mode must be conserve or fixed\n"
+    unless $mu_mode eq 'conserve' || $mu_mode eq 'fixed';
+  my $mu = 0;
+  if ($mu_mode eq 'fixed') {
+    $mu = $settings->{'mu'};
+    die "Set bse.val.occupation.mu to a finite energy in eV for fixed mode\n"
+      unless looks_like_number($mu) && isfinite($mu);
+  }
+
+  # These are the same QE directories PREP used for enkfile. Use the unshifted
+  # integration mesh (the conduction endpoints) to count electrons at any q.
+  my $dir = catdir(updir(), 'PREP', 'BSE');
+  my $split = $prep->{'bse'}->{'split'};
+  my $xml = catfile($dir, $split ? 'Out_shift' : 'Out', 'system.save', 'data-file-schema.xml');
+  die "Finite valence occupations require the cached QE NSCF XML file $xml\n" unless -s $xml;
+  require 'QEdriver.pl';
+  my $spin = $run->{'bse'}->{'nspin'};
+  die "Unsupported spin count for valence occupations\n" unless $spin == 1 || $spin == 2;
+  my @weights;
+  my @energies = QEparseEnergies62($xml, $xml, $spin, \@weights);
+  my $nk = 1;
+  $nk *= $_ for @{$run->{'bse'}->{'kmesh'}};
+  my $meshes = $prep->{'bse'}->{'nonzero_q'} && !$split ? 2 : 1;
+  die "Unexpected QE k-point/spin count for finite valence occupations in $xml\n"
+    unless @energies == $meshes * $nk * $spin && @weights == $meshes * $nk;
+  my @selected_weights = @weights[map { $meshes*$_ + $meshes - 1 } 0 .. $nk-1];
+  my $total_weight = 0;
+  for my $w (@selected_weights) {
+    die "Invalid QE k-point weight in $xml\n"
+      unless looks_like_number($w) && isfinite($w) && $w > 0;
+    $total_weight += $w;
+  }
+  for my $w (@selected_weights) {
+    $w /= $total_weight;
+    die "Finite valence occupations require the uniform OCEAN BSE k-grid\n"
+      if abs($w * $nk - 1) > 1e-8;
+  }
+  my $nb = scalar @{$energies[0]};
+  die "QE spectrum does not cover the conduction band range\n" if $nb < $run->{'bse'}->{'brange'}[3];
+
+  open my $out, '>', 'val_occupation_energies.dat' or die $!;
+  print {$out} "$nb $nk $spin\n";
+  for my $s (0 .. $spin-1) {
+    for my $k (0 .. $nk-1) {
+      my $row = $energies[$meshes * ($s * $nk + $k) + $meshes - 1];
+      die "Invalid QE eigenvalue row for finite valence occupations in $xml\n"
+        unless @$row == $nb && !grep { !looks_like_number($_) || !isfinite($_) } @$row;
+      printf {$out} "%.17g %s\n", $selected_weights[$k], join(' ', @$row);
+    }
+  }
+  close $out or die $!;
+
+  open $out, '>', 'val_occupation.ipt' or die $!;
+  printf {$out} "%.17g %s %.17g\n", $temperature, $mu_mode, $mu;
+  close $out or die $!;
+
+  # Replace the nested-reference comparison with stable scalar provenance for
+  # this input. The eigenspectrum is read afresh and ocean.x starts a fresh solve.
+  require Digest::SHA;
+  open my $spectrum, '<', 'val_occupation_energies.dat' or die $!;
+  my $digest = Digest::SHA->new(256)->addfile($spectrum)->hexdigest;
+  close $spectrum;
+  my $signature = join(' ', $temperature, $mu_mode, $mu, $digest);
+  $run->{'bse'}->{'val_occupation_signature'} = $signature;
+  $run->{'bse'}->{'complete'} = JSON::PP::false
+    unless ($previous->{'bse'}->{'val_occupation_signature'} // '') eq $signature;
+}
+
 sub writeValAuxFiles {
   my ($hashRef) = @_;
 
@@ -1153,7 +1255,9 @@ sub writeValAuxFiles {
     }
   }
 
-  if( $hashRef->{'bse'}->{'occupation'}->{'type'} eq 'none' ) {
+  if( ($hashRef->{'bse'}->{'val'}->{'occupation'}->{'type'} // 'none') eq 'fermi' ) {
+    copy "brange.ipt", "file_brange.ipt" or die "Failed to update file_brange.ipt: $!\n";
+  } elsif( $hashRef->{'bse'}->{'occupation'}->{'type'} eq 'none' ) {
     move "brange.ipt", "file_brange.ipt";
     open OUT, ">", "brange.ipt" or die;
     my $b2 = $hashRef->{'bse'}->{'brange'}[2];

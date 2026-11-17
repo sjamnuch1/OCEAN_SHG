@@ -1473,29 +1473,37 @@ sub QEparseEnergies
 
 sub QEparseEnergies62
 {
-  my ($f1, $f2, $spin) = @_;
+  my ($f1, $f2, $spin, $weights) = @_;
 
-  my $split = 0;
+  die "Optional k-point weights require a single QE XML input\n" if $weights && $f1 ne $f2;
+  @$weights = () if $weights;
   open my $fh1, "<", $f1 or die "Failed to open $f1\n$!";
 
   my @energies1;
   my @energies1_spin;
+  my $in_ks_energies = 0;
 
   while( my $line = <$fh1> )
   {
 
+    $in_ks_energies = 1 if $weights && $line =~ /<ks_energies(?:\s[^>]*)?>/;
+    if ($weights && $in_ks_energies && $line =~ /<k_point\b[^>]*\bweight="([^"]+)"/) {
+      push @$weights, $1;
+    }
+    $in_ks_energies = 0 if $weights && $line =~ m{</ks_energies>};
     if( $line =~ m/<eigenvalues size=\"\d+\">/ )
     {
       $line =~ s/<eigenvalues size=\"\d+\">//;
       chomp $line;
       my $eigs = $line . ' ';
-      until( $line =~ m/eigenvalues/ )
+      until( $line =~ m{</eigenvalues>} )
       { 
         $line = <$fh1>;
+        die "Unterminated eigenvalues in $f1\n" unless defined $line;
         chomp $line;
         $eigs .= $line . ' ';
       }
-      $eigs =~ s/\s+<\/eigenvalues>//;
+      $eigs =~ s{</eigenvalues>\s*}{ };
 
       my @eigs = split( ' ', $eigs );
       if( $spin == 2 )

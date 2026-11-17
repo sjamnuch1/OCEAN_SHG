@@ -4829,9 +4829,8 @@ subroutine OCEAN_psi_dot_write( p, q, outvec, rrequest, rval, ierr, irequest, iv
       return
     endif
 
-!   To make things easier create a receive buffer such that we would be able to
-!   pad the kpts if we wanted
-    if( IAND( p%alloc_store, PSI_STORE_EXTRA ) .eq. 0 ) then
+!   Only core receives use the padded extra buffer. Core dimensions are unset in valence-only runs.
+    if( have_core .and. IAND( p%alloc_store, PSI_STORE_EXTRA ) .eq. 0 ) then
       call OCEAN_psi_alloc_extra( p, ierr )
       if( ierr .ne. 0 ) return
     endif
@@ -5700,6 +5699,11 @@ subroutine OCEAN_psi_dot_write( p, q, outvec, rrequest, rval, ierr, irequest, iv
         val = val +  nrm
       enddo
     enddo
+    if (sys%val_fermi .and. val <= tiny(val)) then
+      if (myid == root) write(6,*) 'The occupation-weighted optical source has zero norm'
+      ierr = 178
+      return
+    endif
     val = sqrt(val)
     p%kpref = 4.0d0 * PI_DP * val ** 2 / (dble(sys%nkpts) * sys%celvol ** 2 )
     val = 1.0_DP / val

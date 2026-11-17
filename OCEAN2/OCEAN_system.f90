@@ -75,6 +75,11 @@ module OCEAN_system
 
     character(len=5) :: occupationType
 
+    logical          :: val_fermi = .false.
+    logical          :: val_fixed_mu = .false.
+    real(DP)         :: val_temperature = 0.0_DP
+    real(DP)         :: val_mu_eV = 0.0_DP
+
     type(o_run), pointer :: cur_run => null()
 
   end type o_system
@@ -611,8 +616,61 @@ module OCEAN_system
 !    sys%cur_run%tau(:) = 0.0_DP
     call OCEAN_runlist_init( sys, nruns, ierr )
     sys%nruns = nruns
+    if (ierr /= 0) return
+    call read_val_occupation_settings(sys, ierr)
 
   end subroutine OCEAN_sys_init
+
+  subroutine read_val_occupation_settings(sys, ierr)
+    use OCEAN_mpi
+    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
+    type(o_system), intent(inout) :: sys
+    integer, intent(inout) :: ierr
+    integer :: unit, status, close_status
+    character(len=16) :: mu_mode
+
+    status = 0
+    if (myid == root) then
+      inquire(file='val_occupation.ipt', exist=sys%val_fermi)
+      if (sys%val_fermi) then
+        open(newunit=unit, file='val_occupation.ipt', status='old', action='read', iostat=status)
+        if (status == 0) then
+          read(unit, *, iostat=status) sys%val_temperature, mu_mode, sys%val_mu_eV
+          close(unit, iostat=close_status)
+        endif
+        if (status == 0) then
+          sys%val_fixed_mu = mu_mode == 'fixed'
+          if (.not. ieee_is_finite(sys%val_temperature) .or. sys%val_temperature <= 0.0_DP &
+              .or. .not. ieee_is_finite(sys%val_mu_eV) &
+              .or. (mu_mode /= 'conserve' .and. mu_mode /= 'fixed')) status = 1
+        endif
+        if (status /= 0) write(6,*) 'Invalid finite occupations input in val_occupation.ipt'
+      endif
+    endif
+#ifdef MPI
+    call MPI_BCAST(sys%val_fermi, 1, MPI_LOGICAL, root, comm, ierr)
+    if (ierr /= MPI_SUCCESS) return
+    if (sys%val_fermi) then
+      call MPI_BCAST(status, 1, MPI_INTEGER, root, comm, ierr)
+      if (ierr /= MPI_SUCCESS) return
+      call MPI_BCAST(sys%val_fixed_mu, 1, MPI_LOGICAL, root, comm, ierr)
+      if (ierr /= MPI_SUCCESS) return
+      call MPI_BCAST(sys%val_temperature, 1, MPI_DOUBLE_PRECISION, root, comm, ierr)
+      if (ierr /= MPI_SUCCESS) return
+      call MPI_BCAST(sys%val_mu_eV, 1, MPI_DOUBLE_PRECISION, root, comm, ierr)
+      if (ierr /= MPI_SUCCESS) return
+    endif
+#endif
+    if (status /= 0) ierr = 178
+    if (sys%val_fermi) then
+      if (sys%nruns /= 1 .or. .not. associated(sys%cur_run)) then
+        ierr = 178
+      else if (sys%cur_run%calc_type /= 'VAL' .or. sys%bwflg .or. sys%cur_run%backf) then
+        ierr = 178
+      endif
+      if (ierr /= 0 .and. myid == root) write(6,*) 'Finite occupations require a forward valence-only calculation'
+    endif
+  end subroutine read_val_occupation_settings
 
   subroutine OCEAN_runlist_init( sys, running_total, ierr )
     use OCEAN_mpi!, ONLY : myid, comm, root

@@ -11,7 +11,7 @@ module OCEAN_val_energy
 
   contains
 
-  subroutine OCEAN_read_energies( sys, p_energy, allow, ierr )
+  subroutine OCEAN_read_energies( sys, p_energy, allow, ierr, pair_weight )
     use OCEAN_system
     use OCEAN_psi
     use OCEAN_mpi
@@ -20,6 +20,9 @@ module OCEAN_val_energy
     !
     type( O_system ), intent( in ) :: sys
     type( OCEAN_vector ), intent( inout ) :: p_energy, allow
+    type( OCEAN_vector ), intent( inout ), optional :: pair_weight
+    real(DP), allocatable :: raw_val(:,:,:), raw_con(:,:,:)
+    real(DP) :: thermal_mu
     integer, intent( inout ) :: ierr
     !
 
@@ -29,7 +32,7 @@ module OCEAN_val_energy
     real( DP ) :: efermi, homo, lumo, cliph
     integer :: ik, ibv, ibc, fh, ispn, jspn, ibeta, i, j
     logical :: metal, have_imaginary, did_gw_correction
-    integer :: nbv, nbc(2), nk, nbw, ibw
+    integer :: nbv, nbc(2), nk, nbw, ibw, status
 #ifdef MPI
     integer(MPI_OFFSET_KIND) :: offset
 #endif
@@ -219,13 +222,25 @@ module OCEAN_val_energy
               im_con_energies( sys%cur_run%num_bands, sys%nkpts, sys%nspn, nbw ), STAT=ierr )
     if( ierr .ne. 0 ) return
 
-    if( myid .eq. 0 .and. abs( nint(sys%nelectron) - sys%nelectron ) .gt. 0.001_DP ) then
-      write(6,*) 'WARNING: Fractional electron count not well handled by valence code (yet)', &
-                  sys%nelectron, nint(sys%nelectron)
+    if (present(pair_weight)) then
+      if (sys%nbw /= 1 .or. sys%cur_run%backf .or. sys%enk_selector /= 0) then
+        if (myid == root) write(6,*) 'Finite valence occupations require forward enkfile-based energies'
+        ierr = 178
+        return
+      endif
+      raw_val = val_energies(:,:,:,1)
+      raw_con = con_energies(:,:,:,1)
+      call val_thermal_mu(sys, raw_con, thermal_mu, homo, lumo, ierr)
+      if (ierr /= 0) return
+    else
+      if( myid .eq. 0 .and. abs( nint(sys%nelectron) - sys%nelectron ) .gt. 0.001_DP ) then
+        write(6,*) 'WARNING: Fractional electron count not well handled by valence code (yet)', &
+                    sys%nelectron, nint(sys%nelectron)
+      endif
+      call find_fermi( sys, val_energies, con_energies, nint(sys%nelectron), efermi, &
+                       homo, lumo, cliph, metal, .true., ierr )
+      if( ierr .ne. 0 ) return
     endif
-    call find_fermi( sys, val_energies, con_energies, nint(sys%nelectron), efermi, &
-                     homo, lumo, cliph, metal, .true., ierr )
-    if( ierr .ne. 0 ) return
 
     
     if( myid .eq. 0 ) write(6,*) val_energies(:,1,1,1)
@@ -233,7 +248,13 @@ module OCEAN_val_energy
                  im_con_energies, did_gw_correction, ierr )
     if( ierr .ne. 0 ) return
 
-    if( did_gw_correction ) then 
+    if (present(pair_weight) .and. have_imaginary) then
+      if (myid == root) write(6,*) 'Finite valence occupations require real transition energies'
+      ierr = 178
+      return
+    endif
+
+    if( did_gw_correction .and. .not. present(pair_weight) ) then
       call find_fermi( sys, val_energies, con_energies, nint(sys%nelectron), efermi, &
                        homo, lumo, cliph, metal, .false., ierr )
       if( ierr .ne. 0 ) return
@@ -261,8 +282,17 @@ module OCEAN_val_energy
       deallocate( tmp_e )
     endif
 #endif
-    call energies_allow( sys, val_energies, con_energies, nint(sys%nelectron), efermi, cliph, &
-                                allow, metal, ierr )
+    if (present(pair_weight)) then
+      call val_thermal_pairs(sys, raw_val, raw_con, val_energies(:,:,:,1), con_energies(:,:,:,1), &
+                             thermal_mu, allow, pair_weight, ierr)
+#ifdef MPI
+      call MPI_BCAST(ierr, 1, MPI_INTEGER, root, comm, status)
+      if (status /= MPI_SUCCESS) ierr = status
+#endif
+    else
+      call energies_allow( sys, val_energies, con_energies, nint(sys%nelectron), efermi, cliph, &
+                           allow, metal, ierr )
+    endif
     if( ierr .ne. 0 ) return
 
 
@@ -340,9 +370,163 @@ module OCEAN_val_energy
     ! This appears to not quite be correct
     call OCEAN_psi_bcast_full( root, p_energy, ierr )
     call OCEAN_psi_bcast_full( root, allow, ierr )
-
+    if (ierr /= 0) return
+    if (present(pair_weight)) call OCEAN_psi_bcast_full(root, pair_weight, ierr)
 
   end subroutine OCEAN_read_energies
+
+  subroutine val_thermal_mu(sys, raw_con, mu, homo, lumo, ierr)
+    use OCEAN_system, only: O_system
+    use OCEAN_mpi
+    use OCEAN_constants, only: eV2Hartree, Hartree2eV
+    use OCEAN_val_occupations, only: read_counting_spectrum, solve_chemical_potential, kB_hartree
+    type(O_system), intent(in) :: sys
+    real(DP), intent(in) :: raw_con(:,:,:)
+    real(DP), intent(out) :: mu, homo, lumo
+    integer, intent(inout) :: ierr
+    real(DP), allocatable :: spectrum(:,:,:), weights(:,:)
+    real(DP) :: nelec, kt, residual, highest_occupation
+    integer :: status, band_edge, nb
+    ! Reject a truncated spectrum when a highest computed band is still appreciably occupied.
+    real(DP), parameter :: top_occupation_limit = 1.0e-8_DP
+
+    nelec = sys%nelectron
+    kt = sys%val_temperature * kB_hartree
+    status = 0
+    if (myid == root) then
+      call read_counting_spectrum(sys%nkpts, sys%nspn, spectrum, weights, status)
+      if (status /= 0) then
+        write(6,*) 'Could not read a valid val_occupation_energies.dat'
+      else
+        nb = size(spectrum, 1)
+        if (nb < sys%brange(4)) then
+          status = 1
+        else if (maxval(abs(spectrum(sys%brange(3):sys%brange(4),:,:) - raw_con)) > 1.0e-8_DP) then
+          status = 1
+        endif
+        if (status /= 0) write(6,*) 'QE counting spectrum disagrees with the DFT conduction endpoints in enkfile'
+      endif
+
+      if (status == 0) then
+        mu = sys%val_mu_eV * eV2Hartree
+        call solve_chemical_potential(spectrum, weights, nelec, kt, sys%val_fixed_mu, mu, residual, &
+                                      highest_occupation, status)
+        if (status /= 0) then
+          write(6,*) 'Could not solve the electron count on the supplied QE spectrum'
+        else
+          ! The filled-band edge values are used by the existing valence scissor/stretch code.
+          ! On overlapping/partially filled bands the selected optical band limits serve as the anchors.
+          band_edge = nint(nelec/2.0_DP)
+          homo = maxval(spectrum(sys%brange(2),:,:))
+          lumo = minval(raw_con(1,:,:))
+          if (band_edge > 0 .and. band_edge < nb) then
+            if (abs(nelec - 2.0_DP*band_edge) <= 1.0e-10_DP) then
+              if (maxval(spectrum(band_edge,:,:)) < minval(spectrum(band_edge+1,:,:))) then
+                homo = maxval(spectrum(band_edge,:,:))
+                lumo = minval(spectrum(band_edge+1,:,:))
+              endif
+            endif
+          endif
+          write(6,'(a,f12.4,a,f16.8)') 'Electronic temperature (K): ', sys%val_temperature, &
+                                        '   Chemical potential (DFT eV): ', mu*Hartree2eV
+          write(6,'(a,2f18.10,a,es14.6)') 'Electrons (target, actual): ', nelec, nelec+residual, &
+                                          '   Residual: ', residual
+          write(6,'(a,i0,a,es14.6)') 'DFT bands counted: ', nb, &
+                                    '   Max occupation of final band: ', highest_occupation
+          if (highest_occupation > top_occupation_limit) then
+            write(6,*) 'The final QE band has occupation above 1e-8. Increase the NSCF band count.'
+            status = 1
+          endif
+        endif
+      endif
+    endif
+#ifdef MPI
+    call MPI_BCAST(status, 1, MPI_INTEGER, root, comm, ierr)
+    if (ierr /= MPI_SUCCESS) return
+#endif
+    if (status /= 0) then
+      ierr = 178
+      return
+    endif
+#ifdef MPI
+    call MPI_BCAST(mu, 1, MPI_DOUBLE_PRECISION, root, comm, ierr)
+    if (ierr /= MPI_SUCCESS) return
+    call MPI_BCAST(homo, 1, MPI_DOUBLE_PRECISION, root, comm, ierr)
+    if (ierr /= MPI_SUCCESS) return
+    call MPI_BCAST(lumo, 1, MPI_DOUBLE_PRECISION, root, comm, ierr)
+#endif
+  end subroutine val_thermal_mu
+
+  subroutine val_thermal_pairs(sys, raw_val, raw_con, eval, econ, mu, allow, pair_weight, ierr)
+    use OCEAN_system, only: O_system
+    use OCEAN_mpi, only: myid, root
+    use OCEAN_psi, only: OCEAN_vector
+    use OCEAN_val_occupations, only: pair_occupation, kB_hartree
+    type(O_system), intent(in) :: sys
+    real(DP), intent(in) :: raw_val(:,:,:), raw_con(:,:,:), eval(:,:,:), econ(:,:,:), mu
+    type(OCEAN_vector), intent(inout) :: allow, pair_weight
+    integer, intent(inout) :: ierr
+    integer :: v, c, k, vs, cs, i, j, beta, active
+    real(DP) :: df, df_min, df_max, kt, lower, upper
+
+    ! All ranks receive the completed arrays in OCEAN_read_energies.
+    if (myid /= root) return
+    lower = -huge(lower)
+    upper = minval(econ(size(econ,1),:,:))
+    call read_optional_cutoff('clipl', lower, ierr)
+    if (ierr /= 0) return
+    call read_optional_cutoff('cliph', upper, ierr)
+    if (ierr /= 0) return
+
+    kt = sys%val_temperature * kB_hartree
+    active = 0
+    df_min = 1.0_DP
+    df_max = 0.0_DP
+    beta = 0
+    do i = 1, sys%valence_ham_spin
+      vs = min(i, sys%nspn)
+      do j = 1, sys%valence_ham_spin
+        cs = min(j, sys%nspn)
+        beta = beta + 1
+        do k = 1, sys%nkpts
+          do v = 1, size(raw_val,1)
+            if (eval(v,k,vs) < lower) cycle
+            do c = 1, size(raw_con,1)
+              if (econ(c,k,cs) > upper) cycle
+              if (sys%disable_intraband .and. v + sys%brange(1) == c + sys%brange(3)) cycle
+              df = pair_occupation(raw_val(v,k,vs), raw_con(c,k,cs), mu, kt)
+              if (df <= 0.0_DP) cycle
+              allow%valr(c,v,k,beta,1) = 1.0_DP
+              allow%vali(c,v,k,beta,1) = 1.0_DP
+              pair_weight%valr(c,v,k,beta,1) = sqrt(df)
+              active = active + 1
+              df_min = min(df_min, df)
+              df_max = max(df_max, df)
+            enddo
+          enddo
+        enddo
+      enddo
+    enddo
+    if (active == 0) df_min = 0.0_DP
+    write(6,'(a,i0,a,2es15.6)') 'Active valence pairs: ', active, '   f_v - f_c range: ', df_min, df_max
+  end subroutine val_thermal_pairs
+
+  subroutine read_optional_cutoff(filename, cutoff, ierr)
+    character(len=*), intent(in) :: filename
+    real(DP), intent(inout) :: cutoff
+    integer, intent(inout) :: ierr
+    integer :: unit, close_status
+    logical :: exists
+
+    inquire(file=filename, exist=exists)
+    if (.not. exists) return
+    open(newunit=unit, file=filename, action='read', status='old', iostat=ierr)
+    if (ierr == 0) then
+      read(unit, *, iostat=ierr) cutoff
+      close(unit, iostat=close_status)
+    endif
+    if (ierr /= 0) write(6,*) 'Could not read energy cutoff in ', filename
+  end subroutine read_optional_cutoff
 
   ! Master routine for all the gw flavors (for the valence band). 
   !   For now this is just a stub for what I currently need.
@@ -400,7 +584,14 @@ module OCEAN_val_energy
 #ifdef MPI
     call MPI_BCAST( have_gw, 1, MPI_LOGICAL, root, comm, ierr )
     if( ierr .ne. MPI_SUCCESS ) return
-    if( have_gw ) then
+    if (sys%val_fermi .and. have_gw) then
+      call MPI_BCAST(val_energies, size(val_energies), MPI_DOUBLE_PRECISION, root, comm, ierr)
+      if (ierr /= MPI_SUCCESS) return
+      call MPI_BCAST(con_energies, size(con_energies), MPI_DOUBLE_PRECISION, root, comm, ierr)
+      if (ierr /= MPI_SUCCESS) return
+      call MPI_BCAST(have_imaginary, 1, MPI_LOGICAL, root, comm, ierr)
+      if (ierr /= MPI_SUCCESS) return
+    elseif( have_gw ) then
 !      call MPI_BCAST( val_energies, sys%cur_run%val_bands * sys%nkpts, MPI_DOUBLE_PRECISION, & 
       call MPI_BCAST( val_energies, (sys%brange(2)-sys%brange(1)) * sys%nkpts * sys%nspn * sys%nbw, &
                       MPI_DOUBLE_PRECISION, root, comm, ierr )

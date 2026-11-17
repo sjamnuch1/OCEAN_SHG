@@ -711,6 +711,9 @@ module OCEAN_exact
       call OCEAN_energies_allow_full( sys, psi_in, ierr )
       if( ierr .ne. 0 ) return
 
+      call OCEAN_energies_weight_valence(sys, psi_in, ierr, use_full=.true.)
+      if (ierr /= 0) return
+
       !TODO: bfnorm/backf don't work for exact
       if( sys%cur_run%backf ) then
         call OCEAN_energies_bfnorm( sys, psi_in, ierr )
@@ -745,6 +748,8 @@ module OCEAN_exact
 
       call OCEAN_energies_allow_full( sys, psi_out, ierr )
       if( ierr .ne. 0 ) return
+      call OCEAN_energies_weight_valence(sys, psi_out, ierr, use_full=.true.)
+      if (ierr /= 0) return
       if( sys%cur_run%backf ) then
         call OCEAN_energies_bfnorm( sys, psi_out, ierr )
         if( ierr .ne. 0 ) return
@@ -755,8 +760,8 @@ module OCEAN_exact
 
       !TODO: This is a bit of a time wasting hack, but also exact diag using backf
       !      will probably be used primarily for testing. This resets psi_in
-      !      to undo the effect of bfnorm. 
-      if( sys%cur_run%backf ) then
+      !      to undo the effect of bfnorm or finite occupation weighting.
+      if( sys%cur_run%backf .or. sys%val_fermi ) then
         call OCEAN_psi_zero_full( psi_in, ierr )
         if( ibw .eq. 1 ) then
           psi_in%valr( icband, ivband, ikpt, ibeta, ibw ) = 1.0_DP
