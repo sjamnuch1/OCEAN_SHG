@@ -1,0 +1,24 @@
+0. parseinput.pl		   # creates Common_val
+1. prep_val.pl                     # creates PREP_VAL
+2. prepare_valence.pl              # creates runnable SHG_VAL directory
+perl /global/homes/s/sjamnuch/Perlmutter/OCEAN/SHG_val2/prepare_valence.pl --root . --axis z --target SHG_VAL_NCON500 --prep-dir PREP_val2/ --con-bands 21:500 --ocean-bin /global/homes/s/sjamnuch/Perlmutter/OCEAN/bin/ --energy-range '-230.5 -213.0 0.125' --common Common_VAL/postDefaultsOceanDatafile
+3. shg_xc_minus_valence.x
+4. prepare_rbxc_cv.py              # creates cv.in
+python /global/homes/s/sjamnuch/Perlmutter/OCEAN/SHG_val2/prepare_rbxc_cv.py --manifest SHG_VAL2/shg_xc_minus_valence_z.info --parcksv PREP_val2/BSE/parcksv.Ti0001 --mels SHG_VAL3/mels.z022n02l01p03 --znl 22 2 1 --element Ti --axis z --site 1 --out SHG_VAL4
+5. shg_rbxc_cv.x cv.in
+6. prepare_y1_cv.pl
+perl /path/to/prepare_y1_cv.pl \
+  --ocean-run-root /path/to/OCEAN_RUN \
+  --valence-con /path/to/PREP_VAL/BSE/con.u2.dat \
+  --component zzz \
+  --energy-range=-461:-459:0.25 \
+  --con-bands 21:500 \
+  --edge-index 1 \ 
+  #Edge index here is the index going from 1 -> N in the edge tag.
+  #For example index 2 would pick 2nd entry in the common file of the excited atom. 
+  --core-eta 0.2
+7. shg_y1_cv.x
+shg_y1_cv.x \
+  --component zzz \
+  --start-file shg_cache_RbXc_cv_zz_000005.bin
+8. shg_t1_gv_contract.x

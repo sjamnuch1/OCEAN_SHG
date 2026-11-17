@@ -396,8 +396,10 @@ unless( $newPrepData->{'bse'}->{'complete'} )
   }
 
 
-  print "$newPrepData->{'computer'}->{'para_prefix'} $ENV{'OCEAN_BIN'}/ocean_prep.x > ocean_prep.log 2>&1\n";
-  system("$newPrepData->{'computer'}->{'para_prefix'} $ENV{'OCEAN_BIN'}/ocean_prep.x > ocean_prep.log 2>&1" );
+  #print "$newPrepData->{'computer'}->{'para_prefix'} $ENV{'OCEAN_BIN'}/ocean_prep.x > ocean_prep.log 2>&1\n";
+  print "srun -n 1 $ENV{'OCEAN_BIN'}/ocean_prep.x > ocean_prep.log 2>&1\n";
+  #system("$newPrepData->{'computer'}->{'para_prefix'} $ENV{'OCEAN_BIN'}/ocean_prep.x > ocean_prep.log 2>&1" );
+  system("srun -n 1 $ENV{'OCEAN_BIN'}/ocean_prep.x > ocean_prep.log 2>&1" );
   if ($? == -1) {
       print "failed to execute: $!\n";
       die;
@@ -524,7 +526,7 @@ sub copyLinkQE
 #    copy( catfile( updir(), updir(), "DFT", $rundir, "QE_EIGS.txt"), "QE_EIGS.txt" );
 #    copy("../$rundir/enkfile", "enkfile_raw") or die "Failed to grab enkfile\n$!";
   }
-  if( -e catfile( "Out","system.save","wann"))
+  elsif( -e catfile( "Out","system.save","wann"))
   {
     print "Detected Wannier function as valence band built in QE62-style DFT run\n";
     open TMP, ">", "wvfn.ipt" or die "Failed to open wvfn.ipt for writing\n$!";

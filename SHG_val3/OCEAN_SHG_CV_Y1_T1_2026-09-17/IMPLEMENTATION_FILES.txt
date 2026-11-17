@@ -1,0 +1,19 @@
+Files added by this standalone core-valence Y(2w)/T1_gv package
+
+SHG_CV2/Makefile
+SHG_CV2/shg_gmres.f90
+SHG_CV2/shg_core_source.f90
+SHG_CV2/shg_cv_manifest.f90
+SHG_CV2/shg_y1_cv.f90
+SHG_CV2/shg_t1_gv_contract.f90
+SHG_CV2/prepare_y1_cv.pl
+SHG_CV2/stage_core_xas_cv.pl
+SHG_CV2/verify_cv_core_basis.py
+SHG_CV2/tests/test_interfaces.py
+README.md
+LICENSE
+
+The copied shg_gmres.f90 and shg_core_source.f90 are the same private
+OCEAN-linked implementations used by the preceding standalone core Y1
+add-on.  The CV manifest reader, CV solver driver, basis verifier, and GV
+contraction are separated from the core-core executables and manifests.

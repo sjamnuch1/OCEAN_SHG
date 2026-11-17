@@ -116,6 +116,8 @@ subroutine jtvsub( lmin, lmax, nproj, npmax, lc, nbsemel, powmax, ifcn, stext, e
               do i = 1, nsphpt
                  call getylm( lc, mc, xsph( i ), ysph( i ), zsph( i ), ylcmc, prefs )
                  call getylm( l, m, xsph( i ), ysph( i ), zsph( i ), ylm, prefs )
+                 !This is your e.r. The xsph -> position and ehat -> polarization.
+                 !ehat is your photon file.
                  edot = xsph( i ) * ehat( 1 ) + ysph( i ) * ehat( 2 ) + zsph( i ) * ehat( 3 )
                  csu(1) = csu(1) + conjg(ylcmc) * edot * ylm * wsph(i)
               end do

@@ -1,0 +1,19 @@
+1.prepare_shg.pl
+perl /global/homes/s/sjamnuch/Perlmutter/OCEAN/SHG_core/prepare_shg.pl --component ZZZ --edge-index 24
+Adjust the bse.in for the energy range
+Example first run for bse.in
+loop
+-96.5 -84.0 0.125
+Use gmres_shg_energy_pair.sh to determine 1st energy range from desired final.
+2.shg_xc_minus.x
+srun -n 64 /global/homes/s/sjamnuch/Perlmutter/OCEAN/SHG_core/shg_xc_minus.x > OUT
+3.shg_rbxc_core.x
+srun -n 64 /global/homes/s/sjamnuch/Perlmutter/OCEAN/SHG_core_realspace/shg_rbxc_core.x > OUT2
+4.shg_y1_core.x
+srun -n 64 /global/homes/s/sjamnuch/Perlmutter/OCEAN/SHG_core/shg_y1_core.x \
+shg_rbxc_core_zz.info ${rbxc_fil} ${ener2w}  > OUT2_${i}
+Manifest              rbxc_binary final_energy output_file
+5.shg_t1_contract.x
+/global/homes/s/sjamnuch/Perlmutter/OCEAN/SHG_core/shg_t1_contract.x \
+shg_xc_minus_core_z.info shg_cache_d_core_z.bin ${y1_fil}.info                ${y1_fil} E_${i}.out
+core_source_manifest     core_source_binary     gmres_twice_solved_exciton_manifest+binary output

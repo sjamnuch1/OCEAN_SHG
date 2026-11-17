@@ -208,17 +208,18 @@ program o_spect
 !      write(99,'(8(1E24.16,1X))') ere*Hartree2eV, reeps, imeps, refrac-1.0d0, mu, reflct, lossf
       write(99,'(8(1E24.16,1X))') ere*Hartree2eV, reeps, imeps, indref, indabs, mu, reflct, lossf
 
-    enddo
+    enddo !is_val
 
-    else
+    else !not is_val
       write( 99, '(A,1i5,A,1e15.8,A,1e15.8)' ) '#   iter=', iter, '   gam=', gam0, '   kpref=', kpref
       write( 99, '(5(A15,1x))' ) '#   Energy', 'Spect', 'Spect(0)', 'SPKK', 'SPKK(0)'
       ii = 0
       do ie = 0, 2 * ne, 2
          ii = ii + 1
-         e = el + ( eh - el ) * dble( ie ) / dble( 2 * ne )
+         e = el + ( eh - el ) * dble( ie ) / dble( 2 * ne ) !This generates the energy grid
          do jdamp = 0, 1 
             gam= gam0 + gamfcn( real(e,dp), real(nval,dp),  real(eps0,dp) ) * dble( jdamp )
+            !      w - Hbse          + i * (energy broadening)
             ctmp = e - a( iter - 1 ) + rm1 * gam
             disc = sqrt( ctmp ** 2 - 4 * b( iter ) ** 2 )
             di= -rm1 * disc

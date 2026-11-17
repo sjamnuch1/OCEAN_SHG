@@ -79,7 +79,7 @@ module OCEAN_mpi
     call MPI_COMM_RANK( comm, myid, ierr )
     if( ierr .ne. 0 ) return
 
-    write(1000+myid,*) temp_myid, myid
+    !write(1000+myid,*) temp_myid, myid
 
 #else
     myid = 0

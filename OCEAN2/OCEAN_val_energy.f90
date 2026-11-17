@@ -952,7 +952,8 @@ module OCEAN_val_energy
       efermi = ( lumo + homo ) / 2.0_dp
     else ! not metal
 !      i_band = nelectron / 2 - sys%brange( 1 ) + 1
-      i_band = nelectron / 2
+      !i_band = nelectron / 2
+      i_band = sys%brange( 2 ) !SJ
       if( myid .eq. root ) write( 6, * ) "i_band = ", i_band
       homo =  val_energies( i_band, 1 , 1, 1)
       do ibw = 1, sys%nbw
@@ -965,7 +966,7 @@ module OCEAN_val_energy
       enddo
 !      i_band = nelectron / 2 - sys%brange( 3 ) + 2
       !i_band = nelectron / 2 + 1 SJ
-      i_band = sys%brange( 2 ) !SJ
+      i_band = sys%brange( 3 )  !SJ
       if( myid .eq. root ) write( 6, * ) "i_band = ", i_band
       lumo = con_energies( i_band, 1 , 1, 1)
       do ibw = 1, sys%nbw

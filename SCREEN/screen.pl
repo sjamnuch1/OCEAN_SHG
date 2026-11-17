@@ -342,10 +342,12 @@ if( -e $dataFile )
     if( $newScreenData->{'model'}->{'flavor'} eq 'SLL') {
       runVhommod($newScreenData->{'model'}->{'SLL'}) 
     }
-    elsif ($newScreenData->{'model'}->{'flavor'} eq 'Isolated') { #SJ
-      runVIsolated($newScreenData->{'model'}->{'Isolated'})       #SJ
+    elsif ($newScreenData->{'model'}->{'flavor'} eq 'isolated') { #SJ
+      runVIsolated($newScreenData->{'model'}->{'isolated'})       #SJ
     }
     else {
+      print "$newScreenData->{'model'}->{'flavor'} \n";
+      print "Flavor\n";
       die "Unrecognized model flavor!\n";
     }
 
