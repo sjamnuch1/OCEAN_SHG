@@ -57,10 +57,13 @@ XC_OBJECTS = shg_gmres.o shg_core_source.o shg_xc_minus.o
 RBXC_OBJECTS = shg_core_vertex.o shg_rbxc_core.o
 RBXC_REALSPACE_OBJECTS = shg_core_vertex.o shg_core_vertex_realspace.o \
 	shg_rbxc_core_realspace.o
+Y1_OBJECTS = shg_gmres.o shg_core_source.o shg_y1_core.o
+T1_FFLAGS ?= -O2 -std=f2008 -Wall -Wextra -pedantic
 
-.PHONY: all ocean_objects clean
+.PHONY: all ocean_objects check clean
 
-all: shg_xc_minus.x shg_rbxc_core.x shg_rbxc_core_realspace.x
+all: shg_xc_minus.x shg_rbxc_core.x shg_rbxc_core_realspace.x \
+	shg_y1_core.x shg_t1_contract.x
 
 ocean_objects:
 	@test -f $(OCEAN_DIR)/ocean.x || { \
@@ -106,8 +109,22 @@ shg_rbxc_core_realspace.x: $(RBXC_REALSPACE_OBJECTS) ocean_objects
 	$(MPIFORT) $(LDFLAGS) -o $@ $(RBXC_REALSPACE_OBJECTS) $(OCEAN_OBJECTS) \
 		$(FFTWL) $(BLAS) $(OPENMP) $(FFTWL) $(OPTIONS)
 
+shg_y1_core.o: shg_y1_core.f90 shg_gmres.o shg_core_source.o ocean_objects
+	$(MPIFORT) $(FLAGS) -c -o $@ $<
+
+shg_y1_core.x: $(Y1_OBJECTS) ocean_objects
+	$(MPIFORT) $(LDFLAGS) -o $@ $(Y1_OBJECTS) $(OCEAN_OBJECTS) \
+		$(FFTWL) $(BLAS) $(OPENMP) $(FFTWL) $(OPTIONS)
+
+shg_t1_contract.x: shg_t1_contract.f90
+	$(FC) $(T1_FFLAGS) -o $@ $<
+
+check: shg_t1_contract.x
+	python3 tests/run_t1_test.py ./shg_t1_contract.x
+
 clean:
 	$(RM) $(XC_OBJECTS) $(RBXC_OBJECTS) $(RBXC_REALSPACE_OBJECTS) \
+		$(Y1_OBJECTS) \
 		shg_gmres.mod shg_core_source.mod shg_core_vertex.mod \
-		shg_core_vertex_realspace.mod shg_xc_minus.x shg_rbxc_core.x \
-		shg_rbxc_core_realspace.x
+		shg_core_vertex_realspace.mod shg_rbxc_manifest_io.mod shg_xc_minus.x shg_rbxc_core.x \
+		shg_rbxc_core_realspace.x shg_y1_core.x shg_t1_contract.x

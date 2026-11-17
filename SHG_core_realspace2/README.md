@@ -1,4 +1,4 @@
-# Standalone OCEAN core-SHG vector tests
+# Standalone OCEAN core-SHG workflow
 
 2026-10-22 update: both `shg_rbxc_core.x` and
 `shg_rbxc_core_realspace.x` accept nonzero upstream `photon_q` while using
@@ -25,8 +25,8 @@ finite-mesh operator through a Born--von Karman real-space FFT and periodic
 sine coordinate. See [`REALSPACE_RX.md`](REALSPACE_RX.md) for its derivation,
 array shapes, build/run instructions, and link-versus-real-space comparison.
 
-Both programs build against an unmodified OCEAN source tree. All additions are confined to
-`SHG/`; no source file or Makefile under `OCEAN2/`, `CNBSE/`, or another
+The OCEAN-linked programs build against an unmodified OCEAN source tree. All additions are confined to
+`SHG_core_realspace2/`; no source file or Makefile under `OCEAN2/`, `CNBSE/`, or another
 upstream directory is changed.
 
 ## What is implemented
@@ -54,14 +54,19 @@ upstream directory is changed.
   real-space operator without collapsing any core channel.
 - `shg_rbxc_core_realspace.f90` mirrors the link driver and writes distinct
   `Rrs` caches plus a real-space manifest.
+- `shg_y1_core.f90` reads either RbXc manifest and its selected physical vector,
+  solves the second core resolvent at a requested target energy, and writes a
+  physical Y1 vector and companion manifest.
+- `shg_t1_contract.f90` computes the raw T1 contraction between the physical
+  core dipole and Y1 vectors, after checking their manifests.
 - `prepare_shg.pl` and `stage_core_xas.pl` stage exactly one existing XAS edge
   and one Cartesian photon into `RUN_ROOT/SHG`. The helper is based on the
   early/staging portion of original `CNBSE/cnbse.pl`; it runs original
   `meljtv.x` but deliberately does not run `ocean.x`.
 
-The two executables now cover the first-layer exciton-vector calculation and
-the core-to-core exciton coupling source. They do not yet apply the second
-resolvent or evaluate the final second-order susceptibility.
+The five executables cover the first resolvent, either representation of the
+core position operator, the second resolvent, and the raw T1 contraction.
+The raw T1 term is not the final second-order susceptibility.
 
 ## Required completed calculation
 
@@ -87,20 +92,22 @@ standalone program:
 cp Makefile.arch.example Makefile.arch
 # Edit Makefile.arch for the local compiler, MPI, BLAS, and FFTW installation.
 make
-make -C SHG
+make -C SHG_core_realspace2
+make -C SHG_core_realspace2 check
 ```
 
-The executables are `SHG/shg_xc_minus.x`, `SHG/shg_rbxc_core.x`, and
-`SHG/shg_rbxc_core_realspace.x`. Their
-Makefile links the original OCEAN objects but omits `OCEAN.o`, which contains
-the `ocean.x` program entry point.
+The executables are in `SHG_core_realspace2/`: `shg_xc_minus.x`,
+`shg_rbxc_core.x`, `shg_rbxc_core_realspace.x`, `shg_y1_core.x`, and
+`shg_t1_contract.x`. The OCEAN-linked targets omit `OCEAN.o`, which contains
+the `ocean.x` program entry point. The serial T1 target has no OCEAN link
+dependency.
 
 ## Stage one core source
 
 From the root of the completed XAS calculation:
 
 ```bash
-/path/to/OCEAN/SHG/prepare_shg.pl --component xyz --edge-index 1
+/path/to/OCEAN/SHG_core_realspace2/prepare_shg.pl --component xyz --edge-index 1
 ```
 
 This creates `./SHG`. For component `xyz`, the rightmost label selects the
@@ -125,7 +132,7 @@ No `VAL` line is used.
 
 ```bash
 cd SHG
-mpirun -np 4 /path/to/OCEAN/SHG/shg_xc_minus.x \
+mpirun -np 4 /path/to/OCEAN/SHG_core_realspace2/shg_xc_minus.x \
   > shg_xc_minus.log 2>&1
 ```
 
@@ -152,7 +159,7 @@ After `shg_xc_minus.x` finishes, remain in the same staged `SHG` run directory
 and run
 
 ```bash
-mpirun -np 4 /path/to/OCEAN/SHG/shg_rbxc_core.x \
+mpirun -np 4 /path/to/OCEAN/SHG_core_realspace2/shg_rbxc_core.x \
   shg_xc_minus_core_z.info > shg_rbxc_core.log 2>&1
 ```
 
@@ -187,3 +194,34 @@ the output manifest.
 This stage does not call GMRES or apply the core BSE Hamiltonian. It uses the
 original `OCEAN_system`, `OCEAN_psi`, and `OCEAN_energies` modules for the
 staged run, vector layout, and final core transition mask.
+
+## Solve the second core resolvent and contract T1
+
+After either RbXc program finishes, choose one row of its manifest and use
+that row's vector filename. For the realspace result at source index 1:
+
+```bash
+mpirun -np 4 /path/to/OCEAN/SHG_core_realspace2/shg_y1_core.x \
+  shg_rbxc_core_realspace_yz.info \
+  shg_cache_Rrs_y_Gm_core_w_z_000001.bin TARGET_ENERGY_EV \
+  shg_cache_Y1_core_yz_000001.bin
+```
+
+For an SHG T1 point, set `TARGET_ENERGY_EV` to twice the source energy in
+the selected RbXc row. The program writes a `.info` file beside the Y1 vector.
+The link-based RbXc manifest and its `shg_cache_R_y_...` vector are also
+accepted.
+
+Contract Y1 with a physical dipole vector for the left polarization `a`:
+
+```bash
+/path/to/OCEAN/SHG_core_realspace2/shg_t1_contract.x \
+  shg_xc_minus_core_x.info shg_cache_d_core_x.bin \
+  shg_cache_Y1_core_yz_000001.bin.info \
+  shg_cache_Y1_core_yz_000001.bin shg_T1_core_xyz_000001.dat
+```
+
+The example uses `a=x`, `b=y`, `c=z`. The dipole manifest and Y1 manifest
+must describe the same core edge, site, k mesh, and vector dimensions. The
+contraction is `sum_i conjg(d_a(i))*Y_bc(i)` with no susceptibility prefactor.
+Use the same staged XAS Hamiltonian for the RbXc and Y1 stages.
