@@ -59,7 +59,7 @@
          "occupation" : {
             "." : "Equilibrium electronic occupations for forward valence BSE with Quantum ESPRESSO.",
             "type" : "Supported modes are none (legacy) and fermi.",
-            "temperature" : "Electronic temperature in kelvin, strictly positive in fermi mode.",
+            "temperature" : "Electronic temperature in kelvin. In fermi mode, 0 K warns and uses legacy occupations; positive values enable Fermi-Dirac occupations.",
             "mu_mode" : "Conserve the electron count (conserve) or use a specified chemical potential (fixed).",
             "mu" : "Fixed chemical potential in eV on the raw QE eigenvalue energy reference."
          },

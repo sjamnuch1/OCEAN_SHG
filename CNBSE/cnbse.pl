@@ -1148,6 +1148,22 @@ sub prepareValOccupations {
   my $settings = $common->{'bse'}->{'val'}->{'occupation'} // {};
   my $type = $settings->{'type'} // 'none';
   die "bse.val.occupation.type must be none or fermi\n" unless $type eq 'none' || $type eq 'fermi';
+  my $temperature = $settings->{'temperature'} // 0;
+  if ($type eq 'fermi') {
+    die "bse.val.occupation.temperature must be finite and nonnegative (kelvin)\n"
+      unless looks_like_number($temperature) && isfinite($temperature) && $temperature >= 0;
+    if ($temperature == 0) {
+      warn "WARNING: bse.val.occupation.temperature is 0 K. Using legacy valence occupations (type = none).\n";
+      $type = 'none';
+      if (exists $run->{'bse'}->{'val'}) {
+        # BSEParams may share the input hash. Override only the effective CNBSE settings.
+        $run->{'bse'}->{'val'} = {
+          %{$run->{'bse'}->{'val'}},
+          occupation => { %$settings, type => $type },
+        };
+      }
+    }
+  }
   # The input file is also used by ocean.x directly. Remove any stale copy on a legacy run.
   foreach my $file ('val_occupation.ipt', 'val_occupation_energies.dat') {
     unlink $file or die "Failed to remove $file: $!\n" if -e $file;
@@ -1174,9 +1190,6 @@ sub prepareValOccupations {
   die "Finite valence occupations take the electron count from DFT. Remove the legacy doping file.\n"
     if -e 'doping';
 
-  my $temperature = $settings->{'temperature'} // 0;
-  die "bse.val.occupation.temperature must be finite and positive (kelvin)\n"
-    unless looks_like_number($temperature) && isfinite($temperature) && $temperature > 0;
   my $mu_mode = $settings->{'mu_mode'} // 'conserve';
   die "bse.val.occupation.mu_mode must be conserve or fixed\n"
     unless $mu_mode eq 'conserve' || $mu_mode eq 'fixed';

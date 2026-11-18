@@ -12,6 +12,9 @@ bse.val.occupation.mu_mode { conserve }
 The temperature is in kelvin. The default `bse.val.occupation.type { none }`
 uses the original valence calculation, including its original electron-count
 handling. Core occupations retain their separate `bse.occupation` inputs.
+With `type { fermi }` and a temperature of exactly 0 K, CNBSE warns and uses
+the legacy valence path. Negative or nonfinite temperatures are input errors
+in Fermi mode.
 
 The default chemical-potential mode, `conserve`, solves for the electron count
 already supplied by DFT, including any fractional part. To supply a chemical

@@ -69,6 +69,28 @@ for my $spin (1, 2) {
     $common->{bse}{val}{occupation}{temperature} = 300;
     prepareValOccupations($run, $common, $prep, $old);
     ok(!$run->{bse}{complete}, 'temperature change invalidates cache');
+    if ($spin == 1 && $mesh_case eq 'zero_q') {
+      unlink $xml or die $!;
+      $run->{bse}{complete} = JSON::PP::true;
+      $run->{bse}{val}{occupation} = $common->{bse}{val}{occupation};
+      $common->{bse}{val}{occupation}{temperature} = 0;
+      my $warning = '';
+      {
+        local $SIG{__WARN__} = sub { $warning .= shift };
+        prepareValOccupations($run, $common, $prep, $old);
+      }
+      like($warning, qr/0 K.*Using legacy valence occupations/, 'zero temperature warns');
+      is($run->{bse}{val}{occupation}{type}, 'none', 'auxiliary writer receives legacy mode');
+      is($common->{bse}{val}{occupation}{type}, 'fermi', 'requested settings are preserved');
+      ok(!$run->{bse}{complete}, 'zero temperature invalidates a previous finite-temperature run');
+      ok(!-e 'val_occupation.ipt' && !-e 'val_occupation_energies.dat',
+         'zero temperature needs no QE XML and removes stale thermal files');
+      for my $invalid (-1, 'NaN', 'Inf') {
+        $common->{bse}{val}{occupation}{temperature} = $invalid;
+        eval { prepareValOccupations($run, $common, $prep, $old); };
+        like($@, qr/must be finite and nonnegative/, "reject invalid temperature $invalid");
+      }
+    }
     $common->{bse}{val}{occupation}{type} = 'none';
     prepareValOccupations($run, $common, $prep, $old);
     ok(!-e 'val_occupation.ipt' && !-e 'val_occupation_energies.dat', 'legacy mode removes stale thermal files');
